@@ -13,33 +13,36 @@ import {
 } from "./support/features";
 
 const agentOrder = [
-  "QoderWork CN",
-  "TRAE Work CN",
   "WorkBuddy",
-  "Grok Build",
   "Codex",
   "Claude Code",
   "OpenCode",
+  "Oh My Pi (omp)",
+  "Grok Build",
+  "QoderWork CN",
+  "TRAE Work CN",
 ] as const;
 
 const modelTargetOrder = [
-  "QoderWork CN",
-  "TRAE Work CN",
   "WorkBuddy",
-  "Grok Build",
   "Codex",
   "Claude Code",
   "OpenCode",
+  "Oh My Pi (omp)",
+  "Grok Build",
+  "QoderWork CN",
+  "TRAE Work CN",
 ] as const;
 
 const modelTargetIconSources = [
-  "qoderwork.png",
-  "trae-work.png",
   "workbuddy.png",
   "inline-svg",
   "inline-svg",
   "inline-svg",
   "inline-svg",
+  "inline-svg",
+  "qoderwork.png",
+  "trae-work.png",
 ] as const;
 
 function agentSelector(page: Parameters<typeof openRendererPage>[0]): Locator {
@@ -85,11 +88,11 @@ test("Agent directory keeps exact native order and accessible configuration entr
   await expect(page.getByTestId("agents-page")).toBeVisible();
   await expect(
     agentSelector(page).locator(".fy-agent-directory-card"),
-  ).toHaveCount(7);
+  ).toHaveCount(8);
   await expect(page.getByRole("button", { name: "重新扫描" })).toBeEnabled();
 
   const items = agentSelector(page).locator(".fy-agent-directory-card");
-  await expect(items).toHaveCount(7);
+  await expect(items).toHaveCount(8);
   expect(
     await items.evaluateAll((elements) =>
       elements.map(
@@ -276,7 +279,7 @@ test("Codex configuration loads safely without unsolicited mutation", async ({
     page.getByRole("heading", { name: "实际配置文件" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "FyAgent 已保存方案" }),
+    page.getByRole("heading", { name: "已保存方案" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "当前模型" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "管理模型" })).toBeVisible();
@@ -358,7 +361,7 @@ test("Models keeps seven targets and saves TRAE models natively", async ({
   const modelPage = page.getByTestId("models-page");
   await expect(modelPage).toBeVisible();
   const targetButtons = modelPage.locator('[data-testid^="model-target-"]');
-  await expect(targetButtons).toHaveCount(7);
+  await expect(targetButtons).toHaveCount(8);
   expect(
     await targetButtons.evaluateAll((elements) =>
       elements.map(
@@ -367,7 +370,7 @@ test("Models keeps seven targets and saves TRAE models natively", async ({
     ),
   ).toEqual([...modelTargetOrder]);
   const targetIcons = targetButtons.locator("img");
-  await expect(targetIcons).toHaveCount(7);
+  await expect(targetIcons).toHaveCount(8);
   expect(
     await targetIcons.evaluateAll((elements) =>
       elements.map((element) => ({

@@ -50,7 +50,7 @@ protected local-file deployment boundary at runtime.
 The following behaviors therefore remain explicit, unverified residual risks:
 
 - the fixed
-  `FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}\v1`
+  `FyAgent.PackageBridge-{A244DC78-3F27-4FA8-90F9-BE5B39404D63}\v1`
   root ACL gives Authenticated Users only stable `FILE_GENERIC_EXECUTE`
   directory semantics (traverse/read-attributes/`READ_CONTROL`/synchronize,
   never list/create/write/delete/delete-child), while each operation ACL names

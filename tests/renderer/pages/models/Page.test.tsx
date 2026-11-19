@@ -199,7 +199,7 @@ function catalog(): AgentCatalogResult {
     evidenceIds: ["p0_scope"],
   }));
   return {
-    contractVersion: 5,
+    contractVersion: 6,
     reviewedAt: "2026-08-20",
     agents: [
       {
@@ -524,23 +524,33 @@ describe("Models page", () => {
     });
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "QoderWork CN",
-      "TRAE Work CN",
       "WorkBuddy",
-      "Grok Build",
       "Codex",
       "Claude Code",
       "OpenCode",
+      "Oh My Pi (omp)",
+      "Grok Build",
+      "QoderWork CN仅支持官方模型",
+      "TRAE Work CN仅支持官方模型",
     ]);
+    expect(screen.getByTestId("model-target-qoderwork")).toHaveAttribute(
+      "data-muted",
+      "true",
+    );
+    expect(screen.getByTestId("model-target-trae")).toHaveAttribute(
+      "data-muted",
+      "true",
+    );
 
     const expectedIcons = [
-      getAgentIcon("qoderwork"),
-      getAgentIcon("trae-work"),
       getAgentIcon("workbuddy"),
-      getAgentIcon("grokbuild"),
       getAgentIcon("codex"),
       getAgentIcon("claude-code"),
       getAgentIcon("opencode"),
+      getAgentIcon("omp"),
+      getAgentIcon("grokbuild"),
+      getAgentIcon("qoderwork"),
+      getAgentIcon("trae-work"),
     ];
     buttons.forEach((button, index) => {
       const icon = button.querySelector("img");
@@ -834,6 +844,12 @@ describe("Models page", () => {
     );
     expect(screen.getByLabelText("API Key")).toHaveValue(secret);
     expect(await screen.findByText("gpt-4o")).toBeVisible();
+    await user.click(
+      within(screen.getByRole("region", { name: "可添加的模型 ID" })).getByRole(
+        "button",
+        { name: "gpt-4o" },
+      ),
+    );
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
     await confirmWriteDisclosure(user);
     await waitFor(() =>
@@ -1823,7 +1839,7 @@ describe("Models page", () => {
     });
     renderPage(ports, "claude");
 
-    await screen.findByText("已有设置，将更新");
+    await screen.findByText("已配置，保存将更新");
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://claude.example/v1",

@@ -129,7 +129,7 @@ volume serial, file index, and size, the elevated application bridge module
 copies only from that handle into:
 
 ```text
-<FOLDERID_ProgramData>\FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}\v1\<64-lowercase-hex-operation-id>\installer.msix
+<FOLDERID_ProgramData>\FyAgent.PackageBridge-{A244DC78-3F27-4FA8-90F9-BE5B39404D63}\v1\<64-lowercase-hex-operation-id>\installer.msix
 ```
 
 The fixed root and `v1` use one stable BA-owned/grouped protected ACL independent
@@ -138,13 +138,10 @@ Users (`AU`) has stable directory `FILE_GENERIC_EXECUTE` semantics—traverse,
 read attributes, `READ_CONTROL`, and synchronize—never list/create/write/delete/
 delete-child. Every create-new operation directory and `.part`/final file has a
 separate protected ACL granting only BA management, minimum SYSTEM read/traverse,
-and minimum read/traverse for the exact frozen Alice SID. ProgramData-parent
-effective access is checked so a non-administrator Alice cannot invalidate the
-root through `DELETE_CHILD`. A privileged Explorer token (Administrators group
-enabled, including the built-in Administrator account) already has those rights
-on OS-owned ancestors and on BA-owned bridge objects; that case does not fail
-closed. Exact protected ACLs, held ancestor handles, and identity rechecks
-remain required. Incompatible existing objects are rejected, not repaired.
+and minimum read/traverse for the exact frozen Alice SID. Rights the logged-in
+user already has on `C:\` and ProgramData do not fail the install. An older
+bridge directory is not reused. Exact protected ACLs, held ancestor handles,
+and identity rechecks remain required for the directory created by this install.
 
 The ProgramData volume must be local fixed NTFS and have enough space for the
 accepted extra full copy. The parent handles short reads/writes while hashing,

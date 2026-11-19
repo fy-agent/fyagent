@@ -1,6 +1,6 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { resolveModelVendorIcon } from "../../shared/assets/models";
 import { classNames } from "../../shared/design-system/classNames";
@@ -38,8 +38,11 @@ export function GroupedModelChips({
   removeDisabled = false,
   onRemove,
   selectedId,
+  selectedIds,
+  selectDisabled = false,
   onSelect,
   ownedByById,
+  renderTrailing,
   emptyLabel,
 }: {
   ids: readonly string[];
@@ -48,8 +51,11 @@ export function GroupedModelChips({
   onRemove?: (modelId: string) => void;
   removeOriginRef?: DialogOriginRef;
   selectedId?: string;
+  selectedIds?: readonly string[];
+  selectDisabled?: boolean;
   onSelect?: (modelId: string) => void;
   ownedByById?: Readonly<Record<string, string>>;
+  renderTrailing?: (modelId: string) => ReactNode;
   emptyLabel: string;
 }) {
   const groups = useMemo(() => groupModelIds(ids), [ids]);
@@ -102,7 +108,8 @@ export function GroupedModelChips({
               <CollapsibleContent open={!isCollapsed}>
                 <ul className="fy-models-chips">
                   {group.ids.map((modelId) => {
-                    const selected = selectedId === modelId;
+                    const selected =
+                      selectedIds?.includes(modelId) ?? selectedId === modelId;
                     const content = (
                       <>
                         <ModelVendorIcon
@@ -125,6 +132,7 @@ export function GroupedModelChips({
                             type="button"
                             className="fy-models-chip-select"
                             aria-pressed={selected}
+                            disabled={selectDisabled}
                             onClick={() => onSelect(modelId)}
                           >
                             {content}
@@ -132,6 +140,7 @@ export function GroupedModelChips({
                         ) : (
                           content
                         )}
+                        {renderTrailing?.(modelId)}
                         {removable ? (
                           <PressableButton
                             dialogOriginRef={removeOriginRef}

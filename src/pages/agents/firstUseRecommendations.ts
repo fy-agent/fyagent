@@ -16,100 +16,36 @@ export const GUIDE_PURPOSES: readonly {
 ];
 
 const recommendedIds: Record<GuidePurpose, readonly AgentCatalogId[]> = {
-  office: ["qoderwork", "trae-work", "workbuddy"],
-  coding: ["grokbuild", "codex", "claude-code", "opencode"],
+  office: ["workbuddy"],
+  coding: ["codex", "claude-code", "opencode", "omp", "grokbuild"],
   both: ["workbuddy", "codex"],
 };
 
 const reasons: Record<AgentCatalogId, string> = {
-  qoderwork: "整理文件、处理数据与生成文档",
-  "trae-work": "文档、演示稿与资料调研",
-  workbuddy: "处理日常办公任务",
-  grokbuild: "在终端中编写代码与运行测试",
-  codex: "开发功能、修复问题与检查代码",
-  "claude-code": "在终端中理解、修改和测试代码",
-  opencode: "在桌面或终端中编写代码",
+  qoderwork: "整理文件、处理数据与生成文档（仅支持官方模型）",
+  "trae-work": "文档、演示稿与资料调研（仅支持官方模型）",
+  workbuddy: "桌面办公全能助手，支持接入自有第三方模型与 Skills",
+  grokbuild: "终端编码工具，支持接入自定义 Provider 与 MCP",
+  codex: "支持桌面端与终端编码开发，可一键接入主流大模型",
+  "claude-code": "在终端中理解、修改和测试代码，支持第三方兼容网关",
+  opencode: "开源多端编码工具，支持同时连接多个自定义模型 Provider",
+  omp: "轻量终端编码 Agent，支持通过 YAML 无损管理自有模型",
 };
-
-import {
-  FDE_PROMPT_PRESETS,
-  PROMPT_PRESET_CATEGORIES,
-} from "../prompts/presets";
-
-export interface StartingInstructionPreset {
-  id: string;
-  name: string;
-  category: string;
-  summary: string;
-}
-
-const AGENT_PRESET_ID_MAP: Record<
-  GuidePurpose,
-  Record<AgentCatalogId, string>
-> = {
-  office: {
-    qoderwork: "fde-knowledge",
-    "trae-work": "fde-discovery",
-    workbuddy: "fde-workflow",
-    codex: "fde-evaluation",
-    grokbuild: "fde-cloudops",
-    "claude-code": "fde-incident",
-    opencode: "fde-private-deployment",
-  },
-  coding: {
-    grokbuild: "fde-incident",
-    codex: "fde-cloudops",
-    "claude-code": "fde-integration",
-    opencode: "fde-private-deployment",
-    qoderwork: "fde-knowledge",
-    "trae-work": "fde-discovery",
-    workbuddy: "fde-workflow",
-  },
-  both: {
-    workbuddy: "fde-workflow",
-    codex: "fde-cloudops",
-    qoderwork: "fde-knowledge",
-    "trae-work": "fde-discovery",
-    grokbuild: "fde-incident",
-    "claude-code": "fde-integration",
-    opencode: "fde-private-deployment",
-  },
-};
-
-/**
- * Lazily resolves starting instruction preset directly from authoritative FDE_PROMPT_PRESETS.
- * Avoids duplicating or fabricating prompt templates.
- */
-export function startingPresetForAgent(
-  agentId: AgentCatalogId,
-  purpose: GuidePurpose,
-): StartingInstructionPreset | undefined {
-  const presetId = AGENT_PRESET_ID_MAP[purpose]?.[agentId];
-  if (!presetId) return undefined;
-
-  const found = FDE_PROMPT_PRESETS.find((p) => p.id === presetId);
-  if (!found) return undefined;
-
-  const categoryLabel =
-    PROMPT_PRESET_CATEGORIES.find((c) => c.id === found.category)?.label ??
-    found.category;
-
-  return {
-    id: found.id,
-    name: found.name,
-    category: categoryLabel,
-    summary: found.description,
-  };
-}
 
 export function firstUseRecommendations(
   entries: readonly AgentCatalogEntry[],
   purpose: GuidePurpose,
 ) {
-  return entries
-    .filter((entry) => recommendedIds[purpose].includes(entry.id))
-    .map((entry) => ({
-      entry,
-      reason: reasons[entry.id],
-    }));
+  const order = recommendedIds[purpose];
+  return order.flatMap((id) => {
+    const entry = entries.find((candidate) => candidate.id === id);
+    if (!entry) return [];
+    return [
+      {
+        entry,
+        reason: reasons[entry.id],
+        badge: "可接入自有模型",
+      },
+    ];
+  });
 }

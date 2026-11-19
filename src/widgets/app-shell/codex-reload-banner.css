@@ -1,0 +1,29 @@
+.fy-codex-reload-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--fy-color-warning, #d97706) 32%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--fy-color-warning, #f59e0b) 12%,
+    var(--fy-surface-elevated, transparent)
+  );
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.fy-codex-reload-banner-copy {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.fy-codex-reload-banner-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}

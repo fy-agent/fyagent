@@ -2,6 +2,7 @@
 //!
 //! Handles provider CRUD operations, switching, and configuration management.
 
+pub(crate) mod batch_setup;
 pub(crate) mod claude_direct;
 mod claude_editor;
 mod claude_write_projection;
@@ -24,6 +25,10 @@ mod managed_proxy;
 mod universal;
 mod usage;
 
+pub use batch_setup::{
+    apply_batch_provider_setup, preview_batch_provider_setup, BatchProviderApplyRequest,
+    BatchProviderApplyResult, BatchProviderPreviewRequest, BatchProviderPreviewResult,
+};
 pub use claude_write_projection::{
     ClaudeQuickSetupApplyRequest, ClaudeQuickSetupOutcome, ClaudeQuickSetupPreview,
 };

@@ -82,6 +82,14 @@ const OPENCODE_DESKTOP: AgentLifecyclePolicy = AgentLifecyclePolicy {
     managed_desktop_source: Some(ManagedDesktopSourceId::OpenCodeDesktop),
 };
 
+const OMP_CLI: AgentLifecyclePolicy = AgentLifecyclePolicy {
+    surfaces: &[AgentSurface::Cli],
+    install: false,
+    update: false,
+    launch: false,
+    managed_desktop_source: None,
+};
+
 fn policy_for_product(agent_id: AgentCatalogId) -> &'static AgentLifecyclePolicy {
     match agent_id {
         AgentCatalogId::QoderWork => &QODERWORK,
@@ -91,6 +99,7 @@ fn policy_for_product(agent_id: AgentCatalogId) -> &'static AgentLifecyclePolicy
         AgentCatalogId::Codex => &CODEX_DESKTOP,
         AgentCatalogId::ClaudeCode => &CLAUDE_CLI,
         AgentCatalogId::OpenCode => &OPENCODE_DESKTOP,
+        AgentCatalogId::Omp => &OMP_CLI,
     }
 }
 
@@ -163,7 +172,7 @@ pub(crate) fn should_resolve_desktop_source(
 mod tests {
     use super::*;
 
-    const ALL_AGENTS: [AgentCatalogId; 7] = [
+    const ALL_AGENTS: [AgentCatalogId; 8] = [
         AgentCatalogId::QoderWork,
         AgentCatalogId::TraeWork,
         AgentCatalogId::WorkBuddy,
@@ -171,6 +180,7 @@ mod tests {
         AgentCatalogId::Codex,
         AgentCatalogId::ClaudeCode,
         AgentCatalogId::OpenCode,
+        AgentCatalogId::Omp,
     ];
 
     const ALL_SURFACES: [AgentSurface; 2] = [AgentSurface::Cli, AgentSurface::Desktop];
@@ -188,7 +198,7 @@ mod tests {
         bool,
         bool,
         bool,
-        ManagedDesktopSourceId,
+        Option<ManagedDesktopSourceId>,
     ) {
         match agent_id {
             AgentCatalogId::QoderWork => (
@@ -196,50 +206,51 @@ mod tests {
                 true,
                 false,
                 true,
-                ManagedDesktopSourceId::QoderWork,
+                Some(ManagedDesktopSourceId::QoderWork),
             ),
             AgentCatalogId::TraeWork => (
                 &[AgentSurface::Desktop],
                 true,
                 false,
                 true,
-                ManagedDesktopSourceId::TraeWork,
+                Some(ManagedDesktopSourceId::TraeWork),
             ),
             AgentCatalogId::WorkBuddy => (
                 &[AgentSurface::Desktop],
                 true,
                 false,
                 true,
-                ManagedDesktopSourceId::WorkBuddy,
+                Some(ManagedDesktopSourceId::WorkBuddy),
             ),
             AgentCatalogId::GrokBuild => (
                 &[AgentSurface::Cli],
                 true,
                 true,
                 false,
-                ManagedDesktopSourceId::GrokCliTooling,
+                Some(ManagedDesktopSourceId::GrokCliTooling),
             ),
             AgentCatalogId::Codex => (
                 &[AgentSurface::Desktop],
                 true,
                 true,
                 true,
-                ManagedDesktopSourceId::CodexDesktopDedicated,
+                Some(ManagedDesktopSourceId::CodexDesktopDedicated),
             ),
             AgentCatalogId::ClaudeCode => (
                 &[AgentSurface::Cli],
                 true,
                 true,
                 false,
-                ManagedDesktopSourceId::ClaudeCliTooling,
+                Some(ManagedDesktopSourceId::ClaudeCliTooling),
             ),
             AgentCatalogId::OpenCode => (
                 &[AgentSurface::Desktop],
                 true,
                 true,
                 true,
-                ManagedDesktopSourceId::OpenCodeDesktop,
+                Some(ManagedDesktopSourceId::OpenCodeDesktop),
             ),
+            AgentCatalogId::Omp => (&[AgentSurface::Cli], false, false, false, None),
         }
     }
 
@@ -256,7 +267,7 @@ mod tests {
                     assert_eq!(policy.install, install);
                     assert_eq!(policy.update, update);
                     assert_eq!(policy.launch, launch);
-                    assert_eq!(policy.managed_desktop_source, Some(source));
+                    assert_eq!(policy.managed_desktop_source, source);
                     assert_eq!(
                         action_supported(agent_id, surface, AgentActionId::Install).unwrap(),
                         install
@@ -346,6 +357,29 @@ mod tests {
                     Err(AgentReasonCode::SurfaceNotSupported)
                 );
             }
+        }
+    }
+
+    #[test]
+    fn omp_is_cli_only_without_native_lifecycle_actions() {
+        let id = AgentCatalogId::Omp;
+        assert_eq!(legal_surfaces(id), &[AgentSurface::Cli]);
+        assert_eq!(default_surface(id), AgentSurface::Cli);
+        assert_eq!(
+            lifecycle_policy(id, AgentSurface::Desktop),
+            Err(AgentReasonCode::SurfaceNotSupported)
+        );
+        let policy = lifecycle_policy(id, AgentSurface::Cli).unwrap();
+        assert!(!policy.install);
+        assert!(!policy.update);
+        assert!(!policy.launch);
+        assert_eq!(policy.managed_desktop_source, None);
+        for action in LIFECYCLE_ACTIONS {
+            assert_eq!(action_supported(id, AgentSurface::Cli, action), Ok(false));
+            assert_eq!(
+                admit_action(id, AgentSurface::Cli, action),
+                Err(AgentReasonCode::ActionNotSupported)
+            );
         }
     }
 

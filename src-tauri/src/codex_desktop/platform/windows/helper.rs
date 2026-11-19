@@ -1952,16 +1952,19 @@ fn helper_pipe_error(message: &'static str) -> InstallerError {
 
 fn helper_identity_error() -> InstallerError {
     InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+        .with_platform_error_code("install_component_unconfirmed")
         .with_diagnostic_message("the current-user package helper identity was rejected")
 }
 
 fn package_pin_error() -> InstallerError {
     InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+        .with_platform_error_code("install_component_unconfirmed")
         .with_diagnostic_message("the verified Windows package file pin was rejected")
 }
 
 fn helper_context_error() -> InstallerError {
     InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+        .with_platform_error_code("interactive_user_unavailable")
         .with_diagnostic_message("the frozen interactive-user context changed before deployment")
 }
 

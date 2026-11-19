@@ -25,6 +25,7 @@ const changeJobsKey = [scope, "change-plans", "job"] as const;
 const dailyMemorySearchKey = [scope, "memory", "daily", "search"] as const;
 
 export const featureKeys = {
+  codexReloadStatus: [scope, "codex", "reload-status"] as const,
   providerMode: (app: "claude" | "codex") =>
     ["fyagent", "provider-mode", app] as const,
   providerStack: (app: "claude" | "codex") =>
@@ -60,6 +61,8 @@ export const featureKeys = {
   workbuddyModelIds: [scope, "workbuddy", "model-ids"] as const,
   traeWorkModelIds: [scope, "trae-work", "model-ids"] as const,
   openCodeModelSnapshot: [scope, "opencode", "model-snapshot"] as const,
+  ompConfig: [scope, "omp", "config"] as const,
+  ompCliDiscovery: [scope, "omp", "cli-discovery"] as const,
   skills: [scope, "skills", "installed"] as const,
   skillBackups: [scope, "skills", "backups"] as const,
   skillDiscovery: [scope, "skills", "discovery"] as const,
@@ -240,6 +243,25 @@ export function useOpenCodeModelSnapshot(enabled = true) {
     queryKey: featureKeys.openCodeModelSnapshot,
     queryFn: ports.opencodeModels.getSnapshot,
     enabled: useVisibleEnabled(enabled),
+  });
+}
+
+export function useOmpConfig(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.ompConfig,
+    queryFn: ports.ompModels.readConfig,
+    enabled: useVisibleEnabled(enabled),
+  });
+}
+
+export function useOmpCliDiscovery(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.ompCliDiscovery,
+    queryFn: ports.ompModels.discoverCli,
+    enabled: useVisibleEnabled(enabled),
+    staleTime: 30_000,
   });
 }
 

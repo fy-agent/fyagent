@@ -146,7 +146,39 @@ fn read_process_table() -> Option<String> {
 
 #[cfg(windows)]
 fn read_process_table() -> Option<String> {
-    None
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let ps_exe =
+        std::path::PathBuf::from(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe");
+    if !ps_exe.is_file() {
+        return None;
+    }
+    let script = r#"Get-CimInstance Win32_Process -Filter "Name LIKE 'codex%'" -ErrorAction SilentlyContinue | ForEach-Object { if ($_.CreationDate -and $_.CommandLine) { $s = [math]::Max(0, [int]((Get-Date) - $_.CreationDate).TotalSeconds); "{0} {1:D2}:{2:D2} {3}" -f $_.ProcessId, [int][math]::Floor($s / 60), ($s % 60), $_.CommandLine } }"#;
+    let mut child = std::process::Command::new(ps_exe)
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    let deadline = std::time::Instant::now() + Duration::from_millis(1500);
+    loop {
+        match child.try_wait().ok()? {
+            Some(status) => {
+                let output = child.wait_with_output().ok()?;
+                return status
+                    .success()
+                    .then(|| String::from_utf8_lossy(&output.stdout).into_owned());
+            }
+            None if std::time::Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            None => std::thread::sleep(Duration::from_millis(25)),
+        }
+    }
 }
 
 fn run_restart(timeout: Duration) -> Result<Output, String> {
@@ -221,7 +253,73 @@ fn current_fingerprint() -> String {
 /// 记下新启动的 Codex 现在会读到的目录。Codex 的客户端文件每写一次（直连、进出代理、Stack
 /// 增删、退出时写回）和启动接上之后各调一次。
 pub(crate) fn observe(store: &DeviceStore) {
-    record(store, &current_fingerprint(), (env().now_ms)());
+    let now_ms = (env().now_ms)();
+    record(store, &current_fingerprint(), now_ms);
+    let combined = combined_codex_config_fingerprint();
+    if combined != NO_CATALOG {
+        record_to_file(store, CONFIG_HISTORY_FILENAME, &combined, now_ms);
+    }
+}
+
+pub(crate) const CONFIG_HISTORY_FILENAME: &str = "codex-config-reload-history.json";
+
+fn record_to_file(
+    store: &DeviceStore,
+    filename: &str,
+    fingerprint: &str,
+    now_ms: u64,
+) -> Vec<Generation> {
+    let _guard = history_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let path = store.file(filename);
+    let mut history: Vec<Generation> = std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
+    if history
+        .last()
+        .is_some_and(|last| last.fingerprint == fingerprint)
+    {
+        return history;
+    }
+    history.push(Generation {
+        since_ms: now_ms,
+        fingerprint: fingerprint.to_string(),
+    });
+    let excess = history.len().saturating_sub(HISTORY_LIMIT);
+    history.drain(..excess);
+    let _ = crate::config::write_json_file(&path, &history);
+    history
+}
+
+fn combined_codex_config_fingerprint() -> String {
+    let config = read_config_text();
+    let catalog = std::fs::read(get_codex_model_catalog_path()).unwrap_or_default();
+    if config.trim().is_empty() && catalog.is_empty() {
+        return NO_CATALOG.to_string();
+    }
+    let mut bytes = config.into_bytes();
+    bytes.push(0);
+    bytes.extend_from_slice(&catalog);
+    sha256_hex(&bytes)
+}
+
+/// Checks running Codex app-servers (`daemon` and `others`) against any change
+/// to `config.toml` or `model-catalogs.json`, covering Direct, Route, and Stack modes.
+pub(crate) fn reload_status_any_mode(store: &DeviceStore) -> Option<StaleClients> {
+    let env = env();
+    let current = combined_codex_config_fingerprint();
+    if current == NO_CATALOG {
+        return None;
+    }
+    let history = record_to_file(store, CONFIG_HISTORY_FILENAME, &current, (env.now_ms)());
+    // If this is the very first observation in history, avoid false-positive nagging
+    // until a subsequent config/catalog change occurs.
+    if history.len() <= 1 {
+        return stale_clients(store);
+    }
+    judge(&history, &current, &probe(&env)).or_else(|| stale_clients(store))
 }
 
 /// 还在用旧目录的 Codex 客户端。都是新的，或者新启动的 Codex 本来就不读 CC Switch 的目录时
@@ -278,6 +376,17 @@ fn daemon_pid() -> Option<u32> {
         .and_then(|pid| u32::try_from(pid).ok())
 }
 
+fn command_in_plugins_dir(command: &str, plugins_dir: &str) -> bool {
+    let normalized_cmd = command.trim_start_matches('"').replace('\\', "/");
+    let normalized_plugins = plugins_dir.replace('\\', "/");
+    let prefix = if normalized_plugins.ends_with('/') {
+        normalized_plugins
+    } else {
+        format!("{normalized_plugins}/")
+    };
+    normalized_cmd.starts_with(&prefix)
+}
+
 /// 从进程表里挑出 app-server。守护进程要 pid 和 `daemon.pid` 对得上、命令行还是
 /// `--managed-daemon`（防止 pid 被别的进程复用），别的配置目录的守护进程不算。`plugins_dir`
 /// 下的是 Chrome 插件自带的，没有模型选择器，不算。
@@ -294,7 +403,7 @@ fn classify(table: &str, daemon_pid: Option<u32>, plugins_dir: &str, now_ms: u64
         match role {
             Role::Daemon if Some(pid) == daemon_pid => servers.daemon = Some(started),
             Role::Daemon => {}
-            Role::Other if command.starts_with(plugins_dir) => {}
+            Role::Other if command_in_plugins_dir(command, plugins_dir) => {}
             Role::Other => servers.others.push(started),
         }
     }
@@ -359,18 +468,26 @@ fn app_server_role(command: &str) -> Option<Role> {
     })
 }
 
-/// 命令行里可执行文件 `codex`（`codex` 或 `…/codex`）之后的部分。
+/// 命令行里可执行文件 `codex`（`codex`、`…/codex` 或 Windows `…\codex.exe"`）之后的部分。
 fn after_codex_executable(command: &str) -> Option<&str> {
+    let lower = command.to_ascii_lowercase();
     const NAME: &str = "codex";
     let mut from = 0;
-    while let Some(found) = command[from..].find(NAME) {
+    while let Some(found) = lower[from..].find(NAME) {
         let start = from + found;
         let end = start + NAME.len();
-        let rest = &command[end..];
-        if (start == 0 || command[..start].ends_with('/'))
-            && (rest.is_empty() || rest.starts_with(' '))
-        {
-            return Some(rest);
+        let valid_prefix = start == 0 || command[..start].ends_with(['/', '\\', '"', ' ']);
+        if valid_prefix {
+            let mut rest = &command[end..];
+            if lower[end..].starts_with(".exe") {
+                rest = &rest[4..];
+            }
+            if let Some(stripped) = rest.strip_prefix('"') {
+                rest = stripped;
+            }
+            if rest.is_empty() || rest.starts_with(' ') {
+                return Some(rest);
+            }
         }
         from = end;
     }

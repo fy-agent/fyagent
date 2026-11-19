@@ -1,4 +1,5 @@
 export type AgentDirectoryPriority = "domestic" | "standard";
+export type AgentModelCapability = "configurable" | "official-only";
 
 export const PRODUCT_DIRECTORY = [
   {
@@ -8,6 +9,7 @@ export const PRODUCT_DIRECTORY = [
     promptAppId: null,
     displayName: "QoderWork CN",
     directoryPriority: "domestic",
+    modelCapability: "official-only",
   },
   {
     agentId: "trae-work",
@@ -16,6 +18,7 @@ export const PRODUCT_DIRECTORY = [
     promptAppId: null,
     displayName: "TRAE Work CN",
     directoryPriority: "domestic",
+    modelCapability: "official-only",
   },
   {
     agentId: "workbuddy",
@@ -24,6 +27,7 @@ export const PRODUCT_DIRECTORY = [
     promptAppId: null,
     displayName: "WorkBuddy",
     directoryPriority: "domestic",
+    modelCapability: "configurable",
   },
   {
     agentId: "grokbuild",
@@ -32,6 +36,7 @@ export const PRODUCT_DIRECTORY = [
     promptAppId: "grokbuild",
     displayName: "Grok Build",
     directoryPriority: "standard",
+    modelCapability: "configurable",
   },
   {
     agentId: "codex",
@@ -40,6 +45,7 @@ export const PRODUCT_DIRECTORY = [
     promptAppId: "codex",
     displayName: "Codex",
     directoryPriority: "standard",
+    modelCapability: "configurable",
   },
   {
     agentId: "claude-code",
@@ -48,6 +54,7 @@ export const PRODUCT_DIRECTORY = [
     promptAppId: "claude",
     displayName: "Claude Code",
     directoryPriority: "standard",
+    modelCapability: "configurable",
   },
   {
     agentId: "opencode",
@@ -56,6 +63,16 @@ export const PRODUCT_DIRECTORY = [
     promptAppId: "opencode",
     displayName: "OpenCode",
     directoryPriority: "standard",
+    modelCapability: "configurable",
+  },
+  {
+    agentId: "omp",
+    assignmentId: null,
+    modelTarget: "omp",
+    promptAppId: null,
+    displayName: "Oh My Pi (omp)",
+    directoryPriority: "standard",
+    modelCapability: "configurable",
   },
 ] as const;
 
@@ -73,7 +90,23 @@ export const AGENT_CATALOG_IDS = [
   "codex",
   "claude-code",
   "opencode",
+  "omp",
 ] as const;
+
+/**
+ * UI display order: configurable self-owned model clients first, official-only
+ * vendor-locked clients (`qoderwork`, `trae-work`) muted at the bottom.
+ */
+export const AGENT_DISPLAY_ORDER = [
+  "workbuddy",
+  "codex",
+  "claude-code",
+  "opencode",
+  "omp",
+  "grokbuild",
+  "qoderwork",
+  "trae-work",
+] as const satisfies readonly AgentCatalogId[];
 
 export const MCP_TARGET_IDS = [
   "qoderwork",
@@ -86,13 +119,14 @@ export const MCP_TARGET_IDS = [
 ] as const;
 
 export const MODEL_DIRECTORY_IDS = [
-  "qoderwork",
-  "trae",
   "workbuddy",
-  "grokbuild",
   "codex",
   "claude",
   "opencode",
+  "omp",
+  "grokbuild",
+  "qoderwork",
+  "trae",
 ] as const;
 
 export const PROMPT_APP_IDS = [
@@ -115,10 +149,20 @@ export function agentDirectoryPriority(
   return entry?.directoryPriority ?? "standard";
 }
 
+export function isOfficialOnlyAgent(agentId: AgentCatalogId): boolean {
+  const entry = PRODUCT_DIRECTORY.find((item) => item.agentId === agentId);
+  return entry?.modelCapability === "official-only";
+}
+
 export type McpTargetId = (typeof MCP_TARGET_IDS)[number];
 export type SkillTargetId = McpTargetId;
 export type ModelDirectoryId = (typeof MODEL_DIRECTORY_IDS)[number];
 export type PromptAppId = (typeof PROMPT_APP_IDS)[number];
+
+export function isOfficialOnlyModelTarget(target: ModelDirectoryId): boolean {
+  const entry = PRODUCT_DIRECTORY.find((item) => item.modelTarget === target);
+  return entry?.modelCapability === "official-only";
+}
 
 export const SKILL_TARGET_IDS = MCP_TARGET_IDS;
 export const SUPPORTED_APP_IDS = MCP_TARGET_IDS;
@@ -126,10 +170,11 @@ export const SUPPORTED_APP_IDS = MCP_TARGET_IDS;
 export const MCP_TARGETS: ReadonlyArray<{
   id: McpTargetId;
   label: string;
-}> = PRODUCT_DIRECTORY.map((entry) => ({
-  id: entry.assignmentId,
-  label: entry.displayName,
-}));
+}> = PRODUCT_DIRECTORY.flatMap((entry) =>
+  entry.assignmentId === null
+    ? []
+    : [{ id: entry.assignmentId, label: entry.displayName }],
+);
 
 export const SKILL_TARGETS = MCP_TARGETS;
 export const SUPPORTED_APPS = MCP_TARGETS;
@@ -142,6 +187,7 @@ export const AGENT_VARIANT_IDS = [
   "codex",
   "claude-code",
   "opencode",
+  "omp",
 ] as const;
 
 export type AgentVariantId = (typeof AGENT_VARIANT_IDS)[number];

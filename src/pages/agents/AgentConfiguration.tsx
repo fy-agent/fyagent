@@ -10,7 +10,7 @@ import type { AgentCatalogEntry } from "../../shared/features/types";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { BrandIconFrame } from "../../shared/ui/catalog";
 import { Button } from "../../shared/ui/Button";
-import { InlineNotice } from "../../shared/ui/primitives";
+import { EmptyState, InlineNotice } from "../../shared/ui/primitives";
 
 import { AgentMcpSection, AgentSkillsSection } from "./AgentAssignmentSections";
 import { AgentAuthStatusPanel } from "./AgentAuthStatusPanel";
@@ -19,12 +19,13 @@ import { AgentPromptsSection } from "./AgentPromptsSection";
 import { AgentSourceLinks } from "./AgentSourceLinks";
 import type { AgentSection } from "./agentSections";
 
-const sectionOptions: ReadonlyArray<{ id: AgentSection; label: string }> = [
-  { id: "models", label: "模型" },
-  { id: "skills", label: "Skills" },
-  { id: "mcp", label: "MCP" },
-  { id: "prompts", label: "提示词" },
-];
+const ALL_SECTION_OPTIONS: ReadonlyArray<{ id: AgentSection; label: string }> =
+  [
+    { id: "models", label: "模型" },
+    { id: "skills", label: "Skills" },
+    { id: "mcp", label: "MCP" },
+    { id: "prompts", label: "提示词" },
+  ];
 
 export function AgentConfiguration({
   entry,
@@ -42,12 +43,24 @@ export function AgentConfiguration({
   keepingCurrent?: boolean;
 }) {
   const navigate = useNavigate();
+  const sectionOptions = ALL_SECTION_OPTIONS.filter((option) => {
+    if (option.id === "skills" || option.id === "mcp") {
+      return entry.assignmentId !== null;
+    }
+    if (option.id === "prompts" && entry.assignmentId === null) {
+      return entry.promptAppId !== null;
+    }
+    return true;
+  });
+  const effectiveSection = sectionOptions.some((opt) => opt.id === section)
+    ? section
+    : "models";
   const openManagement = () => {
     const returnDescriptor = {
       agentId: entry.agentId,
-      section,
+      section: effectiveSection,
     } satisfies AgentReturnDescriptor;
-    switch (section) {
+    switch (effectiveSection) {
       case "models":
         navigate(
           appendAgentReturnToPath(
@@ -101,7 +114,7 @@ export function AgentConfiguration({
       <FeatureTabs
         id="agent-configuration-sections"
         label={`${entry.displayName} 配置分段`}
-        value={section}
+        value={effectiveSection}
         options={sectionOptions}
         onChange={onSectionChange}
         className="fy-agent-config-tabs"
@@ -110,23 +123,36 @@ export function AgentConfiguration({
       <FeatureTabPanel
         tabsId="agent-configuration-sections"
         layout="flow"
-        value={section}
+        value={effectiveSection}
         active
         className="fy-agent-config-body"
       >
-        {section === "models" ? (
+        {effectiveSection === "models" ? (
           <>
-            <AgentAuthStatusPanel agentId={entry.agentId} />
+            {entry.agentId !== "omp" ? (
+              <AgentAuthStatusPanel agentId={entry.agentId} />
+            ) : null}
             <AgentModelsSection
               entry={entry}
               catalogEntry={catalogEntry}
               onOpenManagement={openManagement}
             />
           </>
-        ) : section === "skills" ? (
-          <AgentSkillsSection entry={entry} onOpenManagement={openManagement} />
-        ) : section === "mcp" ? (
-          <AgentMcpSection entry={entry} onOpenManagement={openManagement} />
+        ) : effectiveSection === "skills" ? (
+          entry.assignmentId !== null ? (
+            <AgentSkillsSection
+              entry={entry}
+              onOpenManagement={openManagement}
+            />
+          ) : (
+            <EmptyState title="此应用暂不支持通过 FyAgent 分配 Skills" />
+          )
+        ) : effectiveSection === "mcp" ? (
+          entry.assignmentId !== null ? (
+            <AgentMcpSection entry={entry} onOpenManagement={openManagement} />
+          ) : (
+            <EmptyState title="此应用暂不支持通过 FyAgent 分配 MCP" />
+          )
         ) : (
           <AgentPromptsSection
             entry={entry}

@@ -116,9 +116,8 @@ describe("AgentAuthStatusPanel", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "打开 Claude Code 官方登录？",
     });
-    expect(dialog).toHaveTextContent("恢复账号需重新登录。");
     expect(dialog).toHaveTextContent(
-      "关闭窗口或停止等待后，已开始的操作仍会继续。",
+      "将打开官方登录页面，完成后会自动刷新状态。",
     );
     expect(port.startSession).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "取消" }));

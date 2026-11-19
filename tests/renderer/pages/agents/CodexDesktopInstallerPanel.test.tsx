@@ -393,7 +393,7 @@ describe("Codex Desktop installer panel", () => {
       await screen.findByRole("button", { name: "打开日志目录" }),
     ).toBeVisible();
     expect(document.body).toHaveTextContent(
-      "版本或安装位置已变化，请刷新后重新确认安装。",
+      "要安装的版本或目标已经变了，请刷新后重新确认。",
     );
     expect(document.body).not.toHaveTextContent("METADATA_CHANGED");
     expect(document.body).not.toHaveTextContent("secret.backend");

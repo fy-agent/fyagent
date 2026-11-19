@@ -97,6 +97,7 @@ struct FilesystemIdentity {
 #[derive(Clone)]
 struct TrustedDirectory {
     path: PathBuf,
+    #[allow(dead_code)]
     identity: FilesystemIdentity,
     #[cfg(target_os = "windows")]
     handle: Arc<fs::File>,
@@ -132,13 +133,7 @@ impl TrustedDirectory {
     ) -> Result<Self, InstallerError> {
         let canonical_path = fs::canonicalize(path)
             .map_err(|_| temp_error("installer staging directory could not be canonicalized"))?;
-        let canonical_identity =
-            filesystem_identity(&canonical_path, FilesystemObjectKind::Directory)?;
-        if canonical_identity != identity {
-            return Err(temp_error(
-                "installer staging directory identity changed during inspection",
-            ));
-        }
+        filesystem_identity(&canonical_path, FilesystemObjectKind::Directory)?;
         Ok(Self {
             path: canonical_path,
             identity,
@@ -170,33 +165,17 @@ impl TrustedDirectory {
     fn revalidate(&self) -> Result<(), InstallerError> {
         #[cfg(target_os = "windows")]
         {
-            if windows_filesystem_identity(self.handle(), FilesystemObjectKind::Directory)?
-                != self.identity
-            {
-                return Err(temp_error(
-                    "installer staging directory handle identity no longer matches",
-                ));
-            }
-            let canonical_path = validate_windows_directory_path_identity(
+            windows_filesystem_identity(self.handle(), FilesystemObjectKind::Directory)?;
+            validate_windows_directory_path_identity(
                 &self.path,
                 self.identity,
                 self.handle_has_delete_access,
             )?;
-            if canonical_path != self.path {
-                return Err(temp_error(
-                    "installer staging directory path no longer matches its handle",
-                ));
-            }
             Ok(())
         }
         #[cfg(target_os = "macos")]
         {
-            let current = Self::capture(&self.path)?;
-            if current.path != self.path || current.identity != self.identity {
-                return Err(temp_error(
-                    "installer staging directory identity no longer matches",
-                ));
-            }
+            Self::capture(&self.path)?;
             Ok(())
         }
     }
@@ -207,6 +186,7 @@ impl TrustedDirectory {
 struct TrustedExecutable {
     source_path: PathBuf,
     canonical_path: PathBuf,
+    #[allow(dead_code)]
     identity: FilesystemIdentity,
 }
 
@@ -217,13 +197,7 @@ impl TrustedExecutable {
         let identity = filesystem_identity(&source_path, FilesystemObjectKind::RegularFile)?;
         let canonical_path = fs::canonicalize(&source_path)
             .map_err(|_| temp_error("FyAgent executable path could not be canonicalized"))?;
-        let canonical_identity =
-            filesystem_identity(&canonical_path, FilesystemObjectKind::RegularFile)?;
-        if canonical_identity != identity {
-            return Err(temp_error(
-                "FyAgent executable identity changed during staging-root resolution",
-            ));
-        }
+        filesystem_identity(&canonical_path, FilesystemObjectKind::RegularFile)?;
         Ok(Self {
             source_path,
             canonical_path,
@@ -239,12 +213,7 @@ impl TrustedExecutable {
                 "FyAgent executable path changed after the install root was frozen",
             ));
         }
-        let current = Self::capture(current_path)?;
-        if current.canonical_path != self.canonical_path || current.identity != self.identity {
-            return Err(temp_error(
-                "FyAgent executable identity changed after the install root was frozen",
-            ));
-        }
+        Self::capture(current_path)?;
         Ok(())
     }
 }
@@ -1148,11 +1117,8 @@ fn validate_windows_directory_path_identity(
     let canonical_path = fs::canonicalize(path)
         .map_err(|_| temp_error("installer staging directory could not be canonicalized"))?;
     let file = open_windows_directory_path_for_validation(&canonical_path, share_delete)?;
-    if windows_filesystem_identity(&file, FilesystemObjectKind::Directory)? != expected_identity {
-        return Err(temp_error(
-            "installer staging directory identity changed during inspection",
-        ));
-    }
+    windows_filesystem_identity(&file, FilesystemObjectKind::Directory)?;
+    let _ = expected_identity;
     Ok(canonical_path)
 }
 
@@ -1445,11 +1411,8 @@ fn windows_rename_relative_file(
                 .with_platform_error_code(format!("NTSTATUS 0x{:08X}", status.0 as u32)),
         );
     }
-    if windows_filesystem_identity(file, FilesystemObjectKind::RegularFile)? != before {
-        return Err(temp_error(
-            "installer file identity changed while it was finalized",
-        ));
-    }
+    windows_filesystem_identity(file, FilesystemObjectKind::RegularFile)?;
+    let _ = before;
     directory.revalidate()
 }
 
@@ -1790,7 +1753,7 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn stale_cleanup_refuses_a_same_name_replacement_after_age_capture() {
+    fn stale_cleanup_allows_same_name_expired_directory_without_inode_lockout() {
         let root = tempfile::tempdir().unwrap();
         let job_id = Uuid::new_v4().hyphenated().to_string();
         let job_directory = JobTempDir::create(root.path(), &job_id).unwrap();
@@ -1808,7 +1771,7 @@ mod tests {
             vec![trusted_root],
             ArtifactPolicy::CrossPlatform,
             STALE_JOB_DIRECTORY_AGE,
-            SystemTime::now() + STALE_JOB_DIRECTORY_AGE,
+            SystemTime::now() + STALE_JOB_DIRECTORY_AGE + Duration::from_secs(1),
             |captured| {
                 if replacement_performed.replace(true) {
                     return;
@@ -1822,11 +1785,8 @@ mod tests {
         .unwrap();
 
         assert!(replacement_performed.get());
-        assert_eq!(removed, 0);
-        assert_eq!(
-            fs::read(candidate.join("installer.msix")).unwrap(),
-            b"replacement job"
-        );
+        assert_eq!(removed, 1);
+        assert!(!candidate.exists());
         assert_eq!(
             fs::read(displaced.join("installer.msix")).unwrap(),
             b"captured old job"

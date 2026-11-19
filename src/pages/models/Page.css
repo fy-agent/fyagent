@@ -694,3 +694,115 @@
     grid-template-columns: auto minmax(0, 1fr);
   }
 }
+
+.fy-models-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-preset-batch-body {
+  display: grid;
+  gap: 16px;
+}
+
+.fy-preset-batch-step-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.fy-preset-batch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 8px;
+}
+
+.fy-preset-batch-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-item);
+  background: var(--fy-surface-soft);
+  color: var(--fy-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fy-preset-batch-card:hover {
+  background: var(--fy-surface-hover);
+}
+
+.fy-preset-batch-card[data-selected="true"] {
+  border-color: var(--fy-selected-border);
+  background: var(--fy-selected-bg);
+  box-shadow: var(--fy-selected-shadow);
+}
+
+.fy-preset-batch-card strong {
+  font-size: 13px;
+}
+
+.fy-preset-batch-card span {
+  font-size: 11px;
+  color: var(--fy-text-secondary);
+  line-height: 1.4;
+}
+
+.fy-preset-batch-targets {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.fy-preset-batch-target-list {
+  display: grid;
+  gap: 6px;
+}
+
+.fy-preset-batch-target-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-item);
+  background: var(--fy-surface-soft);
+}
+
+.fy-preset-batch-target-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fy-preset-batch-target-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fy-text-secondary);
+}
+
+.fy-preset-batch-preview ul,
+.fy-preset-batch-outcomes ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.fy-preset-batch-paths {
+  font-size: 11px;
+  color: var(--fy-text-secondary);
+}
+
+.fy-preset-batch-outcome-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

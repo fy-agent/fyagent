@@ -137,19 +137,13 @@ describe("FirstUseGuide", () => {
     expect(
       screen.getByRole("button", { name: "跳过引导" }),
     ).toBeInTheDocument();
-    const path = screen.getByRole("region", { name: "首次安装路径" });
-    expect(path).toHaveTextContent("第 1 步问什么");
-    expect(path).toHaveTextContent("这一步不安装软件");
-    expect(path).toHaveTextContent("待补证");
-    expect(path).toHaveTextContent("暂无免费车道");
-    expect(path).toHaveTextContent("不再被读进去");
-    expect(path).toHaveTextContent("一直转圈");
-    expect(path).toHaveTextContent("环境变量");
-    expect(path).toHaveTextContent("不进入推荐安装名单");
+    expect(
+      screen.queryByRole("region", { name: "首次安装路径" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryAllByRole("heading", { level: 2 })).toHaveLength(0);
   });
 
-  it("navigates to recommendations with real starting instruction presets upon selecting purpose", async () => {
+  it("navigates to recommendations with configurable model badges upon selecting purpose", async () => {
     const user = userEvent.setup();
     renderGuide();
 
@@ -161,9 +155,7 @@ describe("FirstUseGuide", () => {
 
     expect(screen.getByText("Codex")).toBeInTheDocument();
     expect(screen.getByText("Grok Build")).toBeInTheDocument();
-
-    // Reuses real FDE presets lazily
-    expect(screen.getAllByText(/建议起始指令：/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("可接入自有模型").length).toBeGreaterThan(0);
 
     const configButtons = screen.getAllByRole("button", { name: "开始配置" });
     expect(configButtons.length).toBeGreaterThan(0);
@@ -229,11 +221,8 @@ describe("FirstUseGuide", () => {
     });
     expect(
       screen.getByText(
-        /检测到 Codex 的实际配置文件中已有设置（模型：file-model；服务地址：https:\/\/live.example.test\/v1）/,
+        /已检测到 Codex 的现有配置（模型：file-model；服务地址：https:\/\/live.example.test\/v1）/,
       ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/保留现有配置不会发起模型网络请求/),
     ).toBeInTheDocument();
 
     // Click "保留现有配置"
@@ -314,9 +303,7 @@ describe("FirstUseGuide", () => {
       expect(screen.getByText("无法确认 Codex 配置状态")).toBeInTheDocument();
     });
     expect(
-      screen.getByText(
-        /无法确认 Codex 的现有配置状态。当前不确定是否存在可用配置。/,
-      ),
+      screen.getByText(/暂时无法读取 Codex 的配置状态。/),
     ).toBeInTheDocument();
     expect(screen.getByText(/读取当前配置失败/)).toBeInTheDocument();
     expect(onConfigure).not.toHaveBeenCalled();
@@ -377,7 +364,7 @@ describe("FirstUseGuide", () => {
     });
     expect(
       screen.getByText(
-        /检测到 Codex 的实际配置文件中已有设置（模型：file-model；服务地址：https:\/\/live.example.test\/v1）/,
+        /已检测到 Codex 的现有配置（模型：file-model；服务地址：https:\/\/live.example.test\/v1）/,
       ),
     ).toBeInTheDocument();
   });

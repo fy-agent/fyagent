@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 
-import { appendAgentReturnToPath } from "../../shared/features/agent-navigation";
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
+import { InlineModelProbeButton } from "../../shared/features/controls/InlineModelProbeButton";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import {
+  useOmpConfig,
   useOpenCodeModelSnapshot,
   useProviderSummary,
   useTraeWorkModelIds,
@@ -13,12 +13,12 @@ import {
 } from "../../shared/features/queries";
 import type {
   AgentCatalogEntry,
+  BatchSetupTargetId,
   ProviderAppId,
   ProviderSummaryQueryData,
 } from "../../shared/features/types";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { EmptyState, InlineNotice, Spinner } from "../../shared/ui/primitives";
-import { Button } from "../../shared/ui/Button";
 
 import { AgentSectionHeader } from "./AgentSectionHeader";
 
@@ -26,9 +26,15 @@ type ModelObservation = {
   id: string;
   label: string;
   detail: string;
+  probe?: {
+    target: BatchSetupTargetId;
+    providerId?: string | null;
+    modelId: string;
+  };
 };
 
 function providerObservations(
+  target: "codex" | "claude" | "grokbuild",
   data: ProviderSummaryQueryData | undefined,
 ): ModelObservation[] {
   if (!data) return [];
@@ -38,14 +44,26 @@ function providerObservations(
       if (right.id === data.currentId) return 1;
       return left.name.localeCompare(right.name);
     })
-    .map((provider) => ({
-      id: provider.id,
-      label: provider.modelId ?? provider.name,
-      detail:
-        provider.id === data.currentId
-          ? `已选方案 · ${provider.name}`
-          : `已保存方案 · ${provider.name}`,
-    }));
+    .map((provider) => {
+      const resolvedModelId = provider.modelId ?? provider.connection?.modelId;
+      return {
+        id: provider.id,
+        label: resolvedModelId ?? provider.name,
+        detail:
+          provider.id === data.currentId
+            ? `已选方案 · ${provider.name}`
+            : `已保存方案 · ${provider.name}`,
+        ...(resolvedModelId
+          ? {
+              probe: {
+                target,
+                providerId: provider.id,
+                modelId: resolvedModelId,
+              },
+            }
+          : {}),
+      };
+    });
 }
 
 function ProviderLiveConfiguration({
@@ -67,20 +85,16 @@ function ProviderLiveConfiguration({
         <h3>实际配置文件</h3>
         {unknown ? (
           <InlineNotice tone="warning">
-            实际配置状态未知。无法读取当前配置文件，请在软件中检查或稍后重试。
+            无法读取当前配置文件，请检查文件状态或稍后重试。
           </InlineNotice>
         ) : configured ? (
           <>
-            <p>实际配置文件已配置</p>
+            <p>已生效</p>
             <p>模型：{live.connection.modelId ?? "未指定模型"}</p>
             <p>服务地址：{live.connection.baseUrl ?? "未指定服务地址"}</p>
-            <p>尚未测试连接。</p>
           </>
         ) : (
-          <p>
-            实际配置尚未配置。
-            {live?.state === "missing" ? "配置文件尚不存在。" : ""}
-          </p>
+          <p>{live?.state === "missing" ? "配置文件尚未创建" : "尚未配置"}</p>
         )}
         {(!live || matching) && (data?.writeTargets.length ?? 0) > 0 ? (
           <div>
@@ -104,12 +118,12 @@ export function AgentModelsSection({
   catalogEntry: AgentCatalogEntry;
   onOpenManagement: () => void;
 }) {
-  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const workBuddyStatus = useWorkBuddyStatus(entry.agentId === "workbuddy");
   const workBuddyModels = useWorkBuddyModelIds(entry.agentId === "workbuddy");
   const traeModels = useTraeWorkModelIds(entry.agentId === "trae-work");
   const openCodeModels = useOpenCodeModelSnapshot(entry.agentId === "opencode");
+  const ompConfig = useOmpConfig(entry.agentId === "omp");
   const grokSummary = useProviderSummary(
     "grokbuild",
     entry.agentId === "grokbuild",
@@ -158,22 +172,23 @@ export function AgentModelsSection({
         id: modelId,
         label: modelId,
         detail: "WorkBuddy 已配置模型",
+        probe: { target: "workbuddy", modelId },
       }));
       pending = workBuddyStatus.isPending || workBuddyModels.isPending;
       failed = workBuddyStatus.isError || workBuddyModels.isError;
       break;
     case "grokbuild":
-      observations = providerObservations(grokSummary.data);
+      observations = providerObservations("grokbuild", grokSummary.data);
       pending = grokSummary.isPending;
       failed = grokSummary.isError;
       break;
     case "codex":
-      observations = providerObservations(codexSummary.data);
+      observations = providerObservations("codex", codexSummary.data);
       pending = codexSummary.isPending;
       failed = codexSummary.isError;
       break;
     case "claude-code":
-      observations = providerObservations(claudeSummary.data);
+      observations = providerObservations("claude", claudeSummary.data);
       pending = claudeSummary.isPending;
       failed = claudeSummary.isError;
       break;
@@ -185,6 +200,11 @@ export function AgentModelsSection({
                 id: `${provider.id}:${modelId}`,
                 label: modelId,
                 detail: `OpenCode Provider · ${provider.name}`,
+                probe: {
+                  target: "opencode" as const,
+                  providerId: provider.id,
+                  modelId,
+                },
               }))
             : [
                 {
@@ -196,6 +216,34 @@ export function AgentModelsSection({
       );
       pending = openCodeModels.isPending;
       failed = openCodeModels.isError;
+      break;
+    case "omp":
+      observations = (ompConfig.data?.providers ?? []).flatMap((provider) =>
+        provider.models.length > 0
+          ? provider.models.map((model) => {
+              const selector = `${provider.id}/${model.id}`;
+              const isDefault = ompConfig.data?.defaultModel === selector;
+              return {
+                id: selector,
+                label: model.name ? `${model.name} (${model.id})` : model.id,
+                detail: `${isDefault ? "默认模型 · " : ""}omp Provider · ${provider.id}`,
+                probe: {
+                  target: "omp" as const,
+                  providerId: provider.id,
+                  modelId: model.id,
+                },
+              };
+            })
+          : [
+              {
+                id: `provider:${provider.id}`,
+                label: provider.id,
+                detail: "omp Provider 已创建，尚未配置模型 ID",
+              },
+            ],
+      );
+      pending = ompConfig.isPending;
+      failed = ompConfig.isError;
       break;
   }
 
@@ -216,33 +264,6 @@ export function AgentModelsSection({
         actionLabel="管理模型"
         onAction={onOpenManagement}
       />
-      {entry.agentId === "grokbuild" ? (
-        <>
-          <InlineNotice tone="info">
-            要让 Claude Code 或 Codex 使用 SuperGrok，请在账号与认证保存 Grok
-            账号，再到目标软件的模型管理选择账号和模型。
-          </InlineNotice>
-          <div className="fy-agent-action-row">
-            {(["claude", "codex"] as const).map((target) => (
-              <Button
-                key={target}
-                onClick={() =>
-                  navigate(
-                    appendAgentReturnToPath(`/models?target=${target}`, {
-                      agentId: entry.agentId,
-                      section: "models",
-                    }),
-                  )
-                }
-              >
-                {target === "claude"
-                  ? "为 Claude Code 设置订阅"
-                  : "为 Codex 设置订阅"}
-              </Button>
-            ))}
-          </div>
-        </>
-      ) : null}
       {providerApp && !pending ? (
         <>
           <ProviderLiveConfiguration
@@ -250,8 +271,7 @@ export function AgentModelsSection({
             data={providerQuery?.data}
             failed={failed}
           />
-          <h3>FyAgent 已保存方案</h3>
-          <p>已选方案记录在 FyAgent 中，与实际配置文件分别显示。</p>
+          <h3>已保存方案</h3>
         </>
       ) : null}
       {mode !== "unsupported" ? (
@@ -292,6 +312,13 @@ export function AgentModelsSection({
                 <h3>{item.label}</h3>
                 <p>{item.detail}</p>
               </div>
+              {item.probe ? (
+                <InlineModelProbeButton
+                  target={item.probe.target}
+                  providerId={item.probe.providerId}
+                  modelId={item.probe.modelId}
+                />
+              ) : null}
             </div>
           ))}
         </div>

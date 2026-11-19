@@ -4,6 +4,17 @@ import type {
   ApiConnection,
   ApiProtocol,
 } from "../../domain/configuration/providerApi";
+import {
+  BATCH_SETUP_TARGET_IDS,
+  type BatchSetupTargetId,
+  type BatchSetupTargetSpec,
+} from "../../domain/configuration/presets/desktopPresetTemplates";
+
+export {
+  BATCH_SETUP_TARGET_IDS,
+  type BatchSetupTargetId,
+  type BatchSetupTargetSpec,
+};
 
 export type ProviderAppId = ApiConfigTarget;
 
@@ -270,6 +281,8 @@ export interface OpenCodeModelSnapshot {
 }
 
 export interface OpenCodeFetchModelsRequest {
+  providerId?: string | null;
+  expectedRevision?: string | null;
   baseUrl: string;
   apiKey: string;
   allowNoApiKey: boolean;
@@ -308,4 +321,61 @@ export interface WorkBuddySubscriptionSourceResult {
     bindingVersion: number;
     localBaseUrl: string;
   } | null;
+}
+
+export interface BatchProviderPreviewRequest {
+  targets: BatchSetupTargetSpec[];
+}
+
+export interface BatchProviderPreviewItem {
+  target: BatchSetupTargetId;
+  paths: string[];
+  baseUrl: string;
+  modelId: string;
+  ready: boolean;
+  warning?: string;
+}
+
+export interface BatchProviderPreviewResult {
+  items: BatchProviderPreviewItem[];
+}
+
+export interface BatchProviderApplyRequest {
+  apiKey: string;
+  targets: BatchSetupTargetSpec[];
+}
+
+export interface BatchTargetOutcome {
+  target: BatchSetupTargetId;
+  status: "applied" | "failed";
+  message: string;
+  paths: string[];
+}
+
+export interface BatchProviderApplyResult {
+  outcomes: BatchTargetOutcome[];
+}
+
+export const SAVED_MODEL_PROBE_CATEGORIES = [
+  "ok",
+  "invalid_key",
+  "quota_exhausted",
+  "endpoint_or_model_mismatch",
+  "network_unreachable",
+] as const;
+export type SavedModelProbeCategory =
+  (typeof SAVED_MODEL_PROBE_CATEGORIES)[number];
+
+export interface SavedModelProbeRequest {
+  target: BatchSetupTargetId;
+  providerId?: string | null;
+  modelId: string;
+}
+
+export interface SavedModelProbeResult {
+  category: SavedModelProbeCategory;
+  ok: boolean;
+  latencyMs: number | null;
+  httpStatus: number | null;
+  message: string;
 }

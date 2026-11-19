@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "fd6b2c40329e7b52377fa474414690134757d83b7d27b5aa6be7d6f0cc7da1e6"
+      "335856373b92a1b9cfd6a616e8b7746265edc8bbb1c5ff45757ca3ee12632401"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "8670bda5e47fa4d9ebd1fd439935c9a2544b829bc3510a4b0e1178ae09058b1f"
+      "8da056f42f80f057d775a8a165e60dc5bc775475249682a9e6b9236935da8aea"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
@@ -71,7 +71,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "35ee608653bfb5c69ccf74519fec1196d70e6f1365ccce64e8b427f0caa60ec6"
+      "11e73bcf67bee19c83ed43248bf52ba69e314266f30570dde8e208f0e0c92097"
     ],
     [
       "src-tauri/src/agent_install/preflight.rs",
@@ -83,7 +83,7 @@
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
-      "89c2a304a07c26d3945720329e0c969bf59775d0502760d4125fccd9e3f174d0"
+      "ccbd1bfd0aa1ceaa3b6ba530c18cc53531cb9a4efa4fdcde0410121db4f6b2ac"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -111,11 +111,11 @@
     ],
     [
       "src-tauri/src/codex_desktop_runtime.rs",
-      "d5254b0d7f72e595c2a0bc5b24290b4b193dd1cbfcb0b7d12d9e44e9c6672aa4"
+      "d1e570ffe5a5608b318f27b0f80847437f10e4d4721df105b5cede736043208f"
     ],
     [
       "src-tauri/src/codex_desktop/download.rs",
-      "c24bcc8cfe553c7ec1326a452d116be11fc4a6c26f9294f596a0688dbb8420e7"
+      "9ba938bfe13ecc394fddd39ce46e6fe09263c958961945b422754d63eb28a4ce"
     ],
     [
       "src-tauri/src/codex_desktop/platform.rs",
@@ -131,7 +131,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/deployment.rs",
-      "4b2b6f12e81c6af0701f5def6c51f5b66152439e45dcf98284822c559eaa97e4"
+      "9c28387aea416376887b5ceca5e265b0fdf2e49542ebce6f9ea0943d89041d6f"
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/mod.rs",
@@ -139,7 +139,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
-      "caf96c18b6e07ba5728a270c7eb5a4cd8692955c03518e3647d185f4943ad78b"
+      "f3faac3e7403da3fd6921acc02ac442a9386cf792c32f52590910a527fb34742"
     ],
     [
       "src-tauri/src/codex_desktop/types.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "8981762f1d0dc0705fb2f5383bd4a94e1890c4aeda365bbfe2d6bb0cd6d7e75e"
+      "784651ffcb2c1d0ee7ee720cc64542b548bd3053628edb064ea28643efd9f3b9"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -222,6 +222,10 @@
       "f68cb1883c91dcab2cdc2dfe0fe1cb66c4fa469596b1f9252709e331ecd1af06"
     ],
     [
+      "src-tauri/src/omp_config/mod.rs",
+      "8f66e0fe215356b79a4ec8590317e42a6070468a8a9b203acdd59c17326e5e81"
+    ],
+    [
       "src-tauri/src/opencode_config.rs",
       "3efd1406387c1579ad490e1871b9604a1830cf02463a89a353591545a90f0242"
     ],
@@ -259,7 +263,7 @@
     ],
     [
       "src-tauri/src/services/change_plan/service.rs",
-      "a6f7be2baa89849123e51423166c691147d73bd810fe113d02a95716f877e7fe"
+      "bbf842e015c7ea28182448155192881e062d1ef26960192b6a2ca1d45c4b8493"
     ],
     [
       "src-tauri/src/services/config_pack/files.rs",
@@ -314,20 +318,24 @@
       "59c377b11d89f9d87877c6b0520837a7a73b068d0db741c2b93ffb565401174f"
     ],
     [
+      "src-tauri/src/services/opencode_models/tests.rs",
+      "7615af02f6712da0160ca42cc8d78b4cda090b331c1e405090ea7f558feb7058"
+    ],
+    [
       "src-tauri/src/services/prompt.rs",
       "ee7c4040f2e1c5ef5f80aae1db0da532d7208edfd72cee4985890709d880c626"
     ],
     [
       "src-tauri/src/services/provider/claude_write_projection.rs",
-      "3798cbb5c6fa0586aa863b7fe86db28e940f62a52eb643435250485b0a345a9b"
+      "5ed62122c35008aa3c208de0b14fef7a6852aa1e037e98c3ca3724c5f5fdefa0"
     ],
     [
       "src-tauri/src/services/provider/codex_client_catalog.rs",
-      "954d52df3afcb0cfc631726739fcdd36b212d8ba6a2a14b2cb40340c789ef6e5"
+      "61abf8b25065a67f7a7f7aa67858769589df03c321aacd38a0e3ad1a5810d9b8"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "7e64056a45282b1d390e4d1ea36f61649e19b873160cf11e845ef229c294ab9a"
+      "f6ec17029bdd764e40ad15dbd49a4ac51fc3c04b9f56dc5d5585fefa8e4cc063"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",
@@ -471,7 +479,7 @@
     ],
     [
       "src-tauri/src/session_manager/providers/opencode.rs",
-      "ef0cee8bb74fb908026b0c417429144a409e7033dfcbb64a41fb3c1ca76716d0"
+      "64c397ffad43f918f2cb27890ef1edd07d9241e628e3cced4d158a88cb578ab2"
     ],
     [
       "src-tauri/src/session_manager/terminal/mod.rs",
@@ -551,7 +559,7 @@
     ],
     [
       "src-tauri/user-helper/src/layout.rs",
-      "72d0b9a8ad77232149beba56c73368aeac16c20e500bbe09f8bf04461d7c583c"
+      "c9ce4bd4c565c517912890db1704b258f7f4039419493c65d28cb98adfe1534f"
     ],
     [
       "src-tauri/user-helper/src/main.rs",
@@ -559,15 +567,15 @@
     ],
     [
       "tests/architecture/rustModuleBoundaries.test.ts",
-      "ae213a00ccbf36082be9e90ca3dd507d3f44c93e461cf210cc02908cbc9311c1"
+      "96a1cefb897a743d314a7c4578fcb766386c0bedccecbca96bb6cd8a4ceeaef6"
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "a4c6ec2291051988b741017a3dcb2aad48b07053f7334646689e8508d0f8a856"
+      "2d2897b8c83060236eac76c81e6a7c1c5e784a3dbd39bbbf006eb806b37420fb"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
-      "d58b538143af0c26b9326c71ebc1d9e14e563eb82020b715ec43bcf160fe6ea7"
+      "9a912716e6f331841044231059660f2302a1dc1b92be433c3eb7d0ecc9275c00"
     ],
     [
       "tests/hdiutilRetry.test.ts",
@@ -579,7 +587,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "56db89688c00eb9e954ff78e767c2b56dc33245a33a921ec33b30acd9f843de0"
+      "dac51ce48415e77c32965f56985bb1ff1a273b76965a889cf6482d65ac795e09"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

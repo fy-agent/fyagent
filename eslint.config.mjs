@@ -41,6 +41,8 @@ export default [
       "node_modules/**",
       "playwright-report/**",
       "test-results/**",
+      "src/v2/**",
+      ".worktrees/**",
     ],
   },
   { ...js.configs.recommended, files },

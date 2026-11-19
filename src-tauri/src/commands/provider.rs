@@ -738,6 +738,32 @@ fn parse_provider_draft_app(app: &str) -> Result<AppType, String> {
     Ok(app_type)
 }
 
+#[tauri::command]
+pub async fn preview_batch_provider_setup(
+    request: crate::services::provider::BatchProviderPreviewRequest,
+) -> Result<crate::services::provider::BatchProviderPreviewResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::services::provider::preview_batch_provider_setup(request)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn apply_batch_provider_setup(
+    app_handle: tauri::AppHandle,
+    request: crate::services::provider::BatchProviderApplyRequest,
+) -> Result<crate::services::provider::BatchProviderApplyResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态尚未就绪".to_string())?;
+        crate::services::provider::apply_batch_provider_setup(state.inner(), request)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Claude-specific read-only consent; secrets and file authority stay native.
 #[tauri::command]
 pub async fn preview_claude_quick_setup(

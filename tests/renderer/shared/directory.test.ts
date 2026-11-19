@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   AGENT_CATALOG_IDS,
+  AGENT_DISPLAY_ORDER,
+  isOfficialOnlyAgent,
+  isOfficialOnlyModelTarget,
   MCP_TARGET_IDS,
   MODEL_DIRECTORY_IDS,
   PRODUCT_DIRECTORY,
@@ -14,12 +17,14 @@ describe("Shared product directory", () => {
     expect(PRODUCT_DIRECTORY.map((entry) => entry.agentId)).toEqual([
       ...AGENT_CATALOG_IDS,
     ]);
-    expect(PRODUCT_DIRECTORY.map((entry) => entry.assignmentId)).toEqual([
-      ...MCP_TARGET_IDS,
-    ]);
-    expect(PRODUCT_DIRECTORY.map((entry) => entry.modelTarget)).toEqual([
-      ...MODEL_DIRECTORY_IDS,
-    ]);
+    expect(
+      PRODUCT_DIRECTORY.flatMap((entry) =>
+        entry.assignmentId ? [entry.assignmentId] : [],
+      ),
+    ).toEqual([...MCP_TARGET_IDS]);
+    expect(new Set(PRODUCT_DIRECTORY.map((entry) => entry.modelTarget))).toEqual(
+      new Set(MODEL_DIRECTORY_IDS),
+    );
     expect([
       ...PRODUCT_DIRECTORY.flatMap((entry) =>
         entry.promptAppId ? [entry.promptAppId] : [],
@@ -34,20 +39,35 @@ describe("Shared product directory", () => {
       "codex",
       "claude-code",
       "opencode",
+      "omp",
     ]);
-    expect(
-      PRODUCT_DIRECTORY.map((entry) => [
-        entry.agentId,
-        entry.directoryPriority,
-      ]),
-    ).toEqual([
-      ["qoderwork", "domestic"],
-      ["trae-work", "domestic"],
-      ["workbuddy", "domestic"],
-      ["grokbuild", "standard"],
-      ["codex", "standard"],
-      ["claude-code", "standard"],
-      ["opencode", "standard"],
+    expect(AGENT_DISPLAY_ORDER).toEqual([
+      "workbuddy",
+      "codex",
+      "claude-code",
+      "opencode",
+      "omp",
+      "grokbuild",
+      "qoderwork",
+      "trae-work",
+    ]);
+    expect(MODEL_DIRECTORY_IDS).toEqual([
+      "workbuddy",
+      "codex",
+      "claude",
+      "opencode",
+      "omp",
+      "grokbuild",
+      "qoderwork",
+      "trae",
+    ]);
+    expect(AGENT_CATALOG_IDS.filter(isOfficialOnlyAgent)).toEqual([
+      "qoderwork",
+      "trae-work",
+    ]);
+    expect(MODEL_DIRECTORY_IDS.filter(isOfficialOnlyModelTarget)).toEqual([
+      "qoderwork",
+      "trae",
     ]);
   });
 });

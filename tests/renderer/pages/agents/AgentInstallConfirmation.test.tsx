@@ -29,12 +29,10 @@ describe("Agent install space confirmation", () => {
     const actions = show(
       installPreflightFixture({ agentId: "qoderwork", action: "install" }),
     );
-    expect(screen.getByText(/需预留 6.0 GiB/)).toHaveTextContent(
-      "最少可用 10.0 GiB",
+    expect(screen.getByText(/预计需预留 6.0 GiB/)).toHaveTextContent(
+      "当前可用 10.0 GiB",
     );
-    expect(screen.getByText(/按下载器的 2 GiB 上限/)).toHaveTextContent(
-      "不是厂商精确安装需求",
-    );
+    expect(screen.getByText(/暂按 2 GiB 上限的 3 倍预留空间/)).toBeInTheDocument();
     expect(actions.confirm).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "开始安装" }));
     expect(actions.confirm).toHaveBeenCalledOnce();
@@ -47,8 +45,8 @@ describe("Agent install space confirmation", () => {
       requiredBytes: 3 * 1024 ** 3,
       spaceBudgetBasis: "source_size",
     });
-    expect(screen.getByText(/需预留 3.0 GiB/)).toBeVisible();
-    expect(screen.getByText(/按此安装包元数据大小的 3 倍/)).toHaveTextContent(
+    expect(screen.getByText(/预计需预留 3.0 GiB/)).toBeVisible();
+    expect(screen.getByText(/按安装包大小的 3 倍预留/)).toHaveTextContent(
       "确认时会重新检查",
     );
   });
@@ -65,8 +63,8 @@ describe("Agent install space confirmation", () => {
     ).toBeVisible();
     expect(screen.getByText(/QoderWork · 1.2.4/)).toBeVisible();
     expect(screen.getByText("系统应用程序文件夹")).toBeVisible();
-    expect(screen.getByText(/更新所选位置的软件，保留现有配置/)).toBeVisible();
-    expect(screen.getByText(/拒绝授权会停止本次安装/)).toBeVisible();
+    expect(screen.getByText(/更新所选位置，保留现有配置/)).toBeVisible();
+    expect(screen.getByText(/拒绝授权将取消安装/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "暂不开始" }));
     expect(actions.dismissPreflight).toHaveBeenCalledOnce();
     expect(actions.confirm).not.toHaveBeenCalled();
@@ -84,9 +82,9 @@ describe("Agent install space confirmation", () => {
       runtime: "node_npm",
       spaceBudgetBasis: "cli_unknown",
     });
-    expect(screen.getByText(/安装预留预算尚未核定/)).toBeVisible();
-    expect(screen.getByText(/可用空间数值不能证明容量足够/)).toBeVisible();
-    expect(screen.queryByText(/需预留 6.0/)).not.toBeInTheDocument();
+    expect(screen.getByText(/安装体积未知/)).toBeVisible();
+    expect(screen.getByText(/磁盘剩余空间仅供参考/)).toBeVisible();
+    expect(screen.queryByText(/预计需预留 6.0/)).not.toBeInTheDocument();
   });
 
   it("shows package reserve budget for npm CLI installation", () => {
@@ -102,10 +100,10 @@ describe("Agent install space confirmation", () => {
       runtime: "node_npm",
       spaceBudgetBasis: "package_reserve",
     });
-    expect(screen.getByText(/需预留 0.6 GiB/)).toBeVisible();
+    expect(screen.getByText(/预计需预留 0.6 GiB/)).toBeVisible();
     expect(
-      screen.getByText(/按已核实 npm 包及依赖大小的 3 倍预留 FyAgent 保守预算/),
-    ).toHaveTextContent("这是预留空间，不是厂商保证的完整峰值");
+      screen.getByText(/按 npm 包及依赖大小的 3 倍预留安装空间/),
+    ).toHaveTextContent("确认时会重新检查");
   });
 
   it("keeps a prerelease out of the recommended install label", () => {

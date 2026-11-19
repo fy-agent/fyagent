@@ -886,7 +886,7 @@ jobs:
 
   sign-windows-formal:
     name: Windows ${{ matrix.architecture }} formal signing
-    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
     needs: [eligibility, pin-release-build-inputs]
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -895,10 +895,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: windows-2025
+          - runner: fyagent-simplysign
             target_group: windows-x64
             architecture: x64
-          - runner: windows-11-vs2026-arm
+          - runner: fyagent-simplysign
             target_group: windows-arm64
             architecture: arm64
     env:
@@ -920,9 +920,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $expectedRunnerArch = if ('${{ matrix.architecture }}' -eq 'arm64') { 'ARM64' } else { 'X64' }
-          if ($env:RUNNER_ARCH -cne $expectedRunnerArch) {
-            throw "Windows signing runner architecture $env:RUNNER_ARCH is not native $expectedRunnerArch"
+          if ($env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64') {
+            throw "Windows signing runner $env:RUNNER_OS/$env:RUNNER_ARCH is not the x64 SimplySign runner"
           }
           if ((git rev-parse HEAD) -cne $env:SOURCE_SHA) {
             throw 'Windows signing checkout is not the frozen source SHA'
@@ -1126,7 +1125,7 @@ jobs:
 
   seal-windows-formal:
     name: Windows ${{ matrix.architecture }} fresh formal verification and sealing
-    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
     needs: [eligibility, pin-release-build-inputs, sign-windows-formal]
     runs-on: ${{ matrix.runner }}
     permissions:

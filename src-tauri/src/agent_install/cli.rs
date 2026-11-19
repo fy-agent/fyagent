@@ -15,7 +15,8 @@ pub fn tooling_id_for(agent_id: AgentCatalogId) -> Option<&'static str> {
         AgentCatalogId::QoderWork
         | AgentCatalogId::TraeWork
         | AgentCatalogId::WorkBuddy
-        | AgentCatalogId::Codex => None,
+        | AgentCatalogId::Codex
+        | AgentCatalogId::Omp => None,
     }
 }
 
@@ -82,6 +83,30 @@ pub async fn observe_cli(agent_id: AgentCatalogId) -> Option<CliObservation> {
         .iter()
         .find(|version| version.name() == tool)
         .map(CliObservation::from_tool_version)
+}
+
+pub fn omp_observation_from_discovery(
+    discovery: &crate::omp_config::OmpCliDiscovery,
+) -> CliObservation {
+    CliObservation {
+        detected: discovery.detected,
+        runnable: discovery.detected,
+        local_version: discovery
+            .detected
+            .then(|| discovery.version.clone())
+            .flatten(),
+        latest_version: None,
+        unavailable: false,
+        unconfirmed: false,
+        update_supported: false,
+    }
+}
+
+pub async fn observe_omp_cli() -> Option<CliObservation> {
+    crate::omp_config::discover_omp_cli()
+        .await
+        .ok()
+        .map(|discovery| omp_observation_from_discovery(&discovery))
 }
 
 pub async fn run_cli_lifecycle(
@@ -168,6 +193,35 @@ mod tests {
         assert_eq!(tooling_id_for(AgentCatalogId::QoderWork), None);
         assert_eq!(tooling_id_for(AgentCatalogId::TraeWork), None);
         assert_eq!(tooling_id_for(AgentCatalogId::WorkBuddy), None);
+        assert_eq!(tooling_id_for(AgentCatalogId::Omp), None);
+    }
+
+    #[test]
+    fn omp_discovery_projection_trusts_detection_and_preserves_optional_version() {
+        for (version, expected_version) in
+            [(Some("18.12.5".to_string()), Some("18.12.5")), (None, None)]
+        {
+            let discovery = crate::omp_config::OmpCliDiscovery {
+                detected: true,
+                version,
+                executable_path: Some("C:/Users/Alice/AppData/Local/omp/omp.exe".to_string()),
+            };
+            let observation = omp_observation_from_discovery(&discovery);
+            assert!(observation.detected);
+            assert!(observation.runnable);
+            assert_eq!(observation.local_version.as_deref(), expected_version);
+            assert!(!observation.update_supported);
+        }
+
+        let absent_with_stale_version = crate::omp_config::OmpCliDiscovery {
+            detected: false,
+            version: Some("18.12.5".to_string()),
+            executable_path: None,
+        };
+        let observation = omp_observation_from_discovery(&absent_with_stale_version);
+        assert!(!observation.detected);
+        assert!(!observation.runnable);
+        assert_eq!(observation.local_version, None);
     }
 
     #[test]

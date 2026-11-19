@@ -67,7 +67,11 @@ export default defineConfig({
             "./tests/renderer/app/setup.ts",
           ],
           include: ["tests/renderer/**/*.{test,spec}.{ts,tsx}"],
-          exclude: [...configDefaults.exclude, "tests/browser/**"],
+          exclude: [
+            ...configDefaults.exclude,
+            "**/.worktrees/**",
+            "tests/browser/**",
+          ],
           globals: true,
           clearMocks: true,
           restoreMocks: true,

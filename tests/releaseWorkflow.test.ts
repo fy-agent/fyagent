@@ -328,12 +328,12 @@ const WINDOWS_RELEASE_MATRIX_CONTRACTS = [
     nextJob: "seal-windows-formal",
     rows: [
       {
-        runner: "windows-2025",
+        runner: "fyagent-simplysign",
         target_group: "windows-x64",
         architecture: "x64",
       },
       {
-        runner: "windows-11-vs2026-arm",
+        runner: "fyagent-simplysign",
         target_group: "windows-arm64",
         architecture: "arm64",
       },
@@ -1867,9 +1867,15 @@ describe("FyAgent release workflow", () => {
     const mutations = WINDOWS_RELEASE_MATRIX_CONTRACTS.flatMap((contract) => [
       {
         name: `${contract.job} runner swap`,
-        workflow: mutateReleaseJob(source, contract, (job) =>
-          swapFirstPair(job, "windows-2025", "windows-11-vs2026-arm"),
-        ),
+        workflow: mutateReleaseJob(source, contract, (job) => {
+          const [first, second] = contract.rows;
+          if (first.runner !== second.runner) {
+            return swapFirstPair(job, first.runner, second.runner);
+          }
+          return job
+            .split(`runner: ${first.runner}`)
+            .join("runner: wrong-signing-runner");
+        }),
       },
       {
         name: `${contract.job} extra matrix row`,
@@ -2279,14 +2285,17 @@ describe("FyAgent release workflow", () => {
     );
     expectExactLine(
       formal,
-      "    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+      "    if: \"${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}\"",
     );
     expectExactLine(
       formal,
       "    needs: [eligibility, pin-release-build-inputs]",
     );
-    expect(formal).toContain("runner: windows-2025");
-    expect(formal).toContain("runner: windows-11-vs2026-arm");
+    expect(formal).toContain("runner: fyagent-simplysign");
+    expect(formal).not.toContain("runner: windows-11-vs2026-arm");
+    expect(formal).toContain(
+      "Windows signing runner $env:RUNNER_OS/$env:RUNNER_ARCH is not the x64 SimplySign runner",
+    );
     expect(formal).toContain("permissions:\n      contents: read");
     expect(formal).not.toContain("id-token:");
     expect(formal).not.toContain("verify-windows-nsis-lifecycle.ps1");
@@ -2355,7 +2364,7 @@ describe("FyAgent release workflow", () => {
     );
     expectExactLine(
       sealer,
-      "    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+      "    if: \"${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}\"",
     );
     expectExactLine(
       sealer,

@@ -12,15 +12,17 @@ import {
 describe("models quick setup helpers", () => {
   it("accepts only known non-secret target query values", () => {
     expect(MODEL_TARGETS).toEqual([
-      "qoderwork",
-      "trae",
       "workbuddy",
-      "grokbuild",
       "codex",
       "claude",
       "opencode",
+      "omp",
+      "grokbuild",
+      "qoderwork",
+      "trae",
     ]);
     expect(parseModelTarget("codex")).toBe("codex");
+    expect(parseModelTarget("omp")).toBe("omp");
     expect(parseModelTarget("trae")).toBe("trae");
     expect(parseModelTarget("unknown")).toBe("claude");
     expect(parseModelTarget(null)).toBe("claude");

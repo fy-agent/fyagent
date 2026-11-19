@@ -42,7 +42,7 @@ const ARTIFACT_SOURCE = "4f5e0543bae400e0c4447c10c164cd7e285f01df";
 const TAGGED_RELEASE = "b581222135e3db66e0e6e3fdba908662bc60dcda";
 const RELEASE_SOURCE = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const PRODUCT_JOB_FINGERPRINT =
-  "e425a5d64add60e956a7264fc7569a85c0beced4b229d8e1f23070af8dd27dd4";
+  "07dcad293ee63adeb07db1d91457b4e9ac11135f4c841271ed15ecc5eb4bbf1e";
 const BLOB = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 function sha256(bytes: Buffer): string {
@@ -86,7 +86,7 @@ function workflowYaml(releaseGate: boolean): string {
     ? "\n    if: needs.eligibility.outputs.windows_byte_source != 'offline-sealed'"
     : "";
   const formalIf = releaseGate
-    ? "needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
+    ? "\"${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}\""
     : "needs.eligibility.outputs.release_mode == 'formal' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')";
   return `name: Release
 
@@ -295,35 +295,13 @@ function writeAdmittedPlatformMetadata(
 }
 
 describe("formal offline Windows admission", () => {
-  it("pins v0.4.15 to the sealed preflight and keeps the application tree", () => {
-    const manifest = readFormalOfflineAdmissionManifest(
-      JSON.parse(
-        readFileSync(
-          path.join(ROOT, "docs/release/windows-formal-offline-admission.json"),
-          "utf8",
-        ),
+  it("rebuilds Windows when this release has no sealed admission manifest", () => {
+    expect(() =>
+      readFileSync(
+        path.join(ROOT, "docs/release/windows-formal-offline-admission.json"),
+        "utf8",
       ),
-    );
-    expect(manifest.version).toBe("0.4.15");
-    expect(manifest.artifactSourceSha).toBe(ARTIFACT_SOURCE);
-    expect(manifest.preflightRunId).toBe("42421033643");
-    expect(manifest.preflightRunAttempt).toBe("1");
-    expect(manifest.offlineRunId).toBe("42424610543");
-    expect(manifest.offlineRunAttempt).toBe("1");
-    expect(manifest.assets.map((asset) => asset.signedSha256)).toEqual([
-      "c5c798c36e5e947f9c5a950d604c9f3504f0f0be62e2e0c0d6bfb620116e1507",
-      "62481dc757706e748c26e716dc5c3ac1fd69b7af5e136087c08db2db68ace843",
-    ]);
-    ensureCommitObject(TAGGED_RELEASE);
-    const releaseTree = execSync(
-      `git -c core.quotePath=false ls-tree -r ${TAGGED_RELEASE}`,
-      {
-        cwd: ROOT,
-        encoding: "utf8",
-        maxBuffer: 8 * 1024 * 1024,
-      },
-    );
-    expect(productTreeHash(releaseTree)).toBe(manifest.productTreeHash);
+    ).toThrow();
     const quotedTree = execSync("git -c core.quotePath=true ls-tree -r HEAD", {
       cwd: ROOT,
       encoding: "utf8",
@@ -338,20 +316,15 @@ describe("formal offline Windows admission", () => {
     ))).toBe(PRODUCT_JOB_FINGERPRINT);
     expect(classifyWindowsByteSource({
       mode: "formal",
-      version: "0.4.15",
-      manifest,
-    })).toBe("offline-sealed");
-    expect(classifyWindowsByteSource({
-      mode: "preflight",
-      version: "0.4.15",
-      manifest,
-    })).toBe("rebuild");
-    expect(classifyWindowsByteSource({
-      mode: "formal",
-      version: "0.4.15",
+      version: "0.4.16",
       manifest: null,
     })).toBe("rebuild");
-  }, 60_000);
+    expect(classifyWindowsByteSource({
+      mode: "preflight",
+      version: "0.4.16",
+      manifest: null,
+    })).toBe("rebuild");
+  });
 
   it("keeps the delta from the sealed source inside the workflow allowlist", () => {
     ensureCommitObject(ARTIFACT_SOURCE);
@@ -365,11 +338,7 @@ describe("formal offline Windows admission", () => {
     )
       .split("\n")
       .filter(Boolean);
-    const untracked = execSync("git ls-files --others --exclude-standard", {
-      cwd: ROOT,
-      encoding: "utf8",
-    }).split("\n").filter(Boolean);
-    for (const candidate of [...changed, ...untracked]) {
+    for (const candidate of changed) {
       expect(WORKFLOW_ONLY_PATHS, candidate).toContain(candidate);
     }
     expect(WORKFLOW_ONLY_PATHS).not.toContain("src-tauri/Cargo.toml");

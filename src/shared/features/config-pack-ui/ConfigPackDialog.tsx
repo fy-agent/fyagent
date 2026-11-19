@@ -194,7 +194,7 @@ export function ConfigPackDialog({
       title="迁移连接配置"
       size="wide"
       presentationKey={mode}
-      description="本版支持已保存的 Claude Code 和 Codex 连接。API Key、账户绑定和本机专属设置不会导出；导入只保存未启用草稿。"
+      description="导出或导入 Claude Code、Codex 的模型连接（不含 API Key，导入后需手动启用）。"
       actions={
         <>
           <Button disabled={busy} onClick={onClose}>
@@ -266,8 +266,7 @@ export function ConfigPackDialog({
               )}
               {!!candidates.data.excluded && (
                 <p className="fy-config-pack-hint">
-                  {candidates.data.excluded}{" "}
-                  项连接缺少可迁移字段、使用暂不支持的接口或包含本机信息，未列入可选项。
+                  已忽略 {candidates.data.excluded} 项不支持导出的连接。
                 </p>
               )}
               <ul className="fy-config-pack-list" aria-label="可导出连接">
@@ -401,8 +400,7 @@ export function ConfigPackDialog({
                     </InlineNotice>
                   )}
                   <p className="fy-config-pack-hint">
-                    所有保存项都需要补充 API
-                    Key。当前连接保持不变，之后需在对应应用设置中单独配置和应用。
+                    导入仅保存草稿，不改动当前生效配置；使用前需补充 API Key。
                   </p>
                   {preview.entries.map((entry, index) => (
                     <section key={index} className="fy-config-pack-entry">
@@ -479,7 +477,7 @@ export function ConfigPackDialog({
             <section aria-label="导入结果">
               <InlineNotice>
                 已保存 {result.providers.length} 项未启用连接，跳过{" "}
-                {result.skipped} 项。以下是保存后读取的字段。
+                {result.skipped} 项。
               </InlineNotice>
               {result.providers.map((provider) => (
                 <section

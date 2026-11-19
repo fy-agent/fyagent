@@ -143,7 +143,7 @@ describe("MCP management", () => {
     ).toBe("••••••");
     expect(upsert).not.toHaveBeenCalled();
     expect(toggle).not.toHaveBeenCalled();
-    expect(screen.getByText(/连接尚未测试/)).toBeInTheDocument();
+    expect(screen.getByText("已分配 1 个目标")).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
     expect(
       screen.queryByRole("dialog", { name: "本地协议诊断" }),
@@ -520,7 +520,7 @@ describe("MCP management", () => {
     const rendered = renderFeature(<McpPage />, ports);
     await screen.findByRole("heading", { name: "Imported Time" });
     expect(screen.getByRole("region", { name: "MCP 详情" })).toHaveTextContent(
-      "尚未分配 · 连接尚未测试",
+      "尚未分配",
     );
     await user.click(screen.getByRole("button", { name: "导入现有" }));
     let dialog = await screen.findByRole("dialog", {
@@ -572,7 +572,7 @@ describe("MCP management", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("region", { name: "MCP 详情" }),
-      ).toHaveTextContent("已分配 1 个目标 · 连接尚未测试");
+      ).toHaveTextContent("已分配 1 个目标");
     });
     expect(server.apps).toEqual(createMcpAssignments(["qoderwork"]));
     expect(
@@ -586,7 +586,7 @@ describe("MCP management", () => {
     renderFeature(<McpPage />, ports);
     const reopened = await screen.findByRole("region", { name: "MCP 详情" });
     expect(reopened).toHaveTextContent("QoderWork");
-    expect(reopened).toHaveTextContent("连接尚未测试");
+    expect(reopened).toHaveTextContent("已分配 1 个目标");
     expect(document.body).not.toHaveTextContent("source-secret");
   });
 

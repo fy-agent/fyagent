@@ -25,10 +25,15 @@ export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES = Object.freeze([
   "shared/platform/tauri/feature-ports/configPack.ts",
   "shared/platform/tauri/feature-ports/codexDesktop.ts",
   "shared/platform/tauri/feature-ports/sessionMigration.ts",
+  "shared/platform/tauri/feature-ports/managedAuth.ts",
+  "shared/platform/tauri/feature-ports/changePlans.ts",
+  "shared/platform/tauri/feature-ports/qoderTrae.ts",
+  "shared/platform/tauri/feature-ports/content.ts",
 ]);
 
 export const RENDERER_DEFERRED_SHELL_ENTRIES = Object.freeze([
   "widgets/app-shell/AboutDialog.tsx",
+  "widgets/app-shell/CodexReloadBanner.tsx",
   "shared/features/database-recovery-ui/DatabaseRecoveryDialog.tsx",
 ]);
 

@@ -4,6 +4,7 @@ import type {
   AppModeView,
   ProxyStack,
   CodexDaemonRestartOutcome,
+  CodexStaleClients,
 } from "../../domain/configuration/types/proxy";
 import type {
   ClaudeQuickSetupPreview,
@@ -56,6 +57,10 @@ import type {
   BindManagedProxyResult,
   BindOpenCodeManagedRequest,
   BindOpenCodeManagedResult,
+  BatchProviderPreviewRequest,
+  BatchProviderPreviewResult,
+  BatchProviderApplyRequest,
+  BatchProviderApplyResult,
   ExternalAgentLaunchDestination,
   ExternalAgentLaunchResult,
   ExternalAgentRuntimeStatus,
@@ -79,6 +84,8 @@ import type {
   ModelProbeResult,
   ModelProbeSnapshot,
   ReachabilityResult,
+  SavedModelProbeRequest,
+  SavedModelProbeResult,
   DailyMemoryFileInfo,
   DailyMemorySearchResult,
   HermesMemoryKind,
@@ -93,6 +100,7 @@ import type { AgentAuthPort } from "./agent-auth";
 import type { ManagedAuthPort } from "./managed-auth";
 import type { ChangePlansPort } from "./change-plans";
 import type { GrokToolingPort } from "./grok-tooling";
+import type { OmpModelsPort } from "./omp";
 
 export interface AgentCatalogPort {
   get(): Promise<AgentCatalogResult>;
@@ -169,6 +177,7 @@ export interface ProvidersPort {
     enabled: boolean,
   ): Promise<string | null>;
   adoptCodexCatalog(): Promise<string | null>;
+  getCodexReloadStatus(): Promise<CodexStaleClients | null>;
   restartCodexDaemon(): Promise<CodexDaemonRestartOutcome>;
 
   previewClaudeQuickSetup(
@@ -177,6 +186,15 @@ export interface ProvidersPort {
   applyClaudeQuickSetupPreview(
     request: ClaudeQuickSetupApplyRequest,
   ): Promise<ClaudeQuickSetupOutcome>;
+  previewBatchSetup(
+    request: BatchProviderPreviewRequest,
+  ): Promise<BatchProviderPreviewResult>;
+  applyBatchSetup(
+    request: BatchProviderApplyRequest,
+  ): Promise<BatchProviderApplyResult>;
+  probeSavedModel(
+    request: SavedModelProbeRequest,
+  ): Promise<SavedModelProbeResult>;
   getSummary(app: ProviderAppId): Promise<ProviderSummaryQueryData>;
   getProxyRestorePreview(
     app: ProviderAppId,
@@ -339,6 +357,7 @@ export interface FeaturePorts {
   providers: ProvidersPort;
   workbuddy: WorkBuddyPort;
   opencodeModels: OpenCodeModelsPort;
+  ompModels: OmpModelsPort;
   skills: SkillsPort;
   mcp: McpPort;
   prompts: PromptsPort;

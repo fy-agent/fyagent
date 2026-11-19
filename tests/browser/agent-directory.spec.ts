@@ -58,7 +58,10 @@ async function installAgentDirectoryOverrides(page: Page): Promise<void> {
           : agentId === "qoderwork" || agentId === "opencode"
             ? "not_installed"
             : "installed";
-      const grokCli = agentId === "grokbuild" || agentId === "claude-code";
+      const grokCli =
+        agentId === "grokbuild" ||
+        agentId === "claude-code" ||
+        agentId === "omp";
       return {
         contractVersion: 5,
         configurationEligibility:
@@ -114,7 +117,7 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
 
   const navigation = page.getByRole("navigation", { name: "主导航" });
   const activeNavigation = navigation.getByRole("link", {
-    name: "AI软件配置",
+    name: "Agent目录",
     exact: true,
   });
   const navigationLens = navigation.getByTestId("selection-lens");
@@ -189,7 +192,7 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
 
   const directory = page.getByRole("region", { name: "AI 软件目录" });
   await expect(directory).toBeVisible();
-  await expect(directory.getByRole("article")).toHaveCount(7);
+  await expect(directory.getByRole("article")).toHaveCount(8);
   const workbuddyCard = directory.locator('[data-agent-id="workbuddy"]');
   await workbuddyCard.getByText("官方资料与许可", { exact: true }).click();
   const officialSources = workbuddyCard.getByRole("region", {
@@ -217,7 +220,7 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
           (call) => call.command === "get_agent_install_readiness",
         ).length,
     )
-    .toBeGreaterThanOrEqual(7);
+    .toBeGreaterThanOrEqual(8);
   await expect(
     directory.getByRole("button", { name: "重新扫描" }),
   ).toBeEnabled();
@@ -228,7 +231,7 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
   const brandFrames = directory.locator(
     '.fy-agent-directory-card .fy-catalog-brand-frame[data-size="detail"]',
   );
-  await expect(brandFrames).toHaveCount(7);
+  await expect(brandFrames).toHaveCount(8);
   expect(
     await brandFrames.evaluateAll((frames) =>
       frames.map((frame) => ({
@@ -236,9 +239,15 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
         height: frame.getBoundingClientRect().height,
       })),
     ),
-  ).toEqual([0, 1, 2, 3, 4, 5, 6].map(() => ({ width: 64, height: 64 })));
+  ).toEqual([0, 1, 2, 3, 4, 5, 6, 7].map(() => ({ width: 64, height: 64 })));
 
-  const configurable = ["workbuddy", "grokbuild", "codex", "claude-code"];
+  const configurable = [
+    "workbuddy",
+    "codex",
+    "claude-code",
+    "omp",
+    "grokbuild",
+  ];
   const blocked = ["qoderwork", "trae-work", "opencode"];
   for (const agentId of configurable) {
     await expect(
@@ -327,7 +336,7 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
     /#\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
   );
   const agentsLink = page.getByRole("link", {
-    name: "AI软件配置",
+    name: "Agent目录",
     exact: true,
   });
   await expect(agentsLink).toHaveAttribute(
@@ -391,9 +400,8 @@ test("Agent Auth keeps Claude local verification and routes managed consumers ce
   const confirmation = page.getByRole("dialog", {
     name: "打开 Claude Code 官方登录？",
   });
-  await expect(confirmation).toContainText("恢复账号需重新登录。");
   await expect(confirmation).toContainText(
-    "关闭窗口或停止等待后，已开始的操作仍会继续。",
+    "将打开官方登录页面，完成后会自动刷新状态。",
   );
   expect(
     (await featureFixtureCalls(page)).filter(

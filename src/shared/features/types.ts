@@ -1,6 +1,9 @@
 export {
   AGENT_CATALOG_IDS,
+  AGENT_DISPLAY_ORDER,
   AGENT_VARIANT_IDS,
+  isOfficialOnlyAgent,
+  isOfficialOnlyModelTarget,
   MCP_TARGET_IDS,
   MCP_TARGETS,
   PRODUCT_DIRECTORY,
@@ -118,7 +121,16 @@ export type {
   TraeWorkModelRequest,
 } from "./agents";
 
+export { BATCH_SETUP_TARGET_IDS, SAVED_MODEL_PROBE_CATEGORIES } from "./models";
 export type {
+  BatchProviderApplyRequest,
+  BatchProviderApplyResult,
+  BatchProviderPreviewItem,
+  BatchProviderPreviewRequest,
+  BatchProviderPreviewResult,
+  BatchSetupTargetId,
+  BatchSetupTargetSpec,
+  BatchTargetOutcome,
   CodexProviderMutationWarning,
   FetchedModelList,
   FetchedModelRef,
@@ -147,6 +159,9 @@ export type {
   ProviderSwitchResult,
   ReachabilityResult,
   ReachabilityStatus,
+  SavedModelProbeCategory,
+  SavedModelProbeRequest,
+  SavedModelProbeResult,
   TraeWorkModelIdsResult,
   WorkBuddyConcurrentModificationResult,
   WorkBuddyFetchModelsRequest,

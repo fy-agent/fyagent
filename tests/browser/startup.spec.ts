@@ -36,7 +36,7 @@ test("prioritizes the initial module and never emits readiness from its loading 
     );
     await expect(page.getByTestId("app-shell")).toHaveCount(0);
     release();
-    await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+    await expect(page.locator(".fy-agent-directory-card")).toHaveCount(8);
     await expect
       .poll(
         async () =>
@@ -75,7 +75,7 @@ test("optional module preload failure does not break the initial page or become 
   );
   await page.goto("/#/agents", { waitUntil: "domcontentloaded" });
   await expect.poll(() => aborted).toBe(true);
-  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(8);
   await expect(page.getByRole("button", { name: "重新扫描" })).toBeEnabled();
   expect(errors).toEqual([]);
   await expect(
@@ -108,7 +108,7 @@ test("a failed initial module shows a recoverable error rather than a permanent 
     .toBe(1);
   await page.unroute(failedModule);
   await page.getByRole("button", { name: "重新加载界面" }).click();
-  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(8);
 });
 
 test("prefetched Sessions stays unmounted until visited and preserves its search on return", async ({
@@ -121,7 +121,7 @@ test("prefetched Sessions stays unmounted until visited and preserves its search
       prefetched = true;
   });
   await page.goto("/#/agents");
-  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(8);
   await expect.poll(() => prefetched).toBe(true);
   await expect(page.getByTestId("sessions-page")).toHaveCount(0);
   expect(

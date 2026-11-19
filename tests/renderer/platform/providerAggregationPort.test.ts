@@ -79,6 +79,38 @@ describe("upstream aggregation commands", () => {
     });
     invoke.mockResolvedValueOnce("notRunning");
     expect(await port.restartCodexDaemon()).toBe("notRunning");
+    invoke.mockResolvedValueOnce({ daemon: true, others: false });
+    expect(await port.getCodexReloadStatus()).toEqual({
+      daemon: true,
+      others: false,
+    });
+    invoke.mockResolvedValueOnce({
+      category: "ok",
+      ok: true,
+      latencyMs: 120,
+      httpStatus: 200,
+      message: "连接可用",
+    });
+    expect(
+      await port.probeSavedModel({
+        target: "codex",
+        providerId: "p",
+        modelId: "gpt-5.4",
+      }),
+    ).toEqual({
+      category: "ok",
+      ok: true,
+      latencyMs: 120,
+      httpStatus: 200,
+      message: "连接可用",
+    });
+    expect(invoke).toHaveBeenLastCalledWith("probe_saved_model", {
+      request: {
+        target: "codex",
+        providerId: "p",
+        modelId: "gpt-5.4",
+      },
+    });
   });
 
   it("logs and retries a failed tray refresh without failing the saved mode", async () => {

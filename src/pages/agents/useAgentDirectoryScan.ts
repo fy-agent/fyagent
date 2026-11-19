@@ -142,6 +142,7 @@ function useReadinessQueries() {
     codex: useAgentInstallReadiness("codex", false),
     "claude-code": useAgentInstallReadiness("claude-code", false),
     opencode: useAgentInstallReadiness("opencode", false),
+    omp: useAgentInstallReadiness("omp", false),
   };
 }
 

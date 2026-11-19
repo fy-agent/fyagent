@@ -118,6 +118,7 @@ const agentVariantById = {
   codex: "codex",
   "claude-code": "claude-code",
   opencode: "opencode",
+  omp: "omp",
 } as const;
 
 function catalogEntry(
@@ -287,6 +288,28 @@ function catalogFixture(): AgentCatalogResult {
           id: "terms",
           label: "OpenCode 服务条款",
           url: "https://opencode.ai/legal/terms-of-service",
+        },
+      ]),
+      catalogEntry("omp", "Oh My Pi (omp)", [
+        {
+          id: "product",
+          label: "打开 Oh My Pi 官方页面",
+          url: "https://omp.sh/",
+        },
+        {
+          id: "docs",
+          label: "打开 Oh My Pi 模型配置文档",
+          url: "https://github.com/can1357/oh-my-pi/blob/main/docs/models.md",
+        },
+        {
+          id: "download",
+          label: "打开 Oh My Pi 发布页面",
+          url: "https://github.com/can1357/oh-my-pi/releases",
+        },
+        {
+          id: "license",
+          label: "Oh My Pi 源码与许可证",
+          url: "https://github.com/can1357/oh-my-pi/blob/main/LICENSE",
         },
       ]),
     ],
@@ -978,6 +1001,65 @@ describe("Renderer feature ports", () => {
         },
       ],
     ]);
+  });
+
+  it("accepts only saved OpenCode identity and revision fields without exposing saved credentials", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/shared/platform/tauri/features"
+    );
+    const ports = createTauriFeaturePorts();
+    invoke.mockResolvedValue({
+      models: [{ id: "grok-4.7" }],
+      truncated: false,
+    });
+    const request = {
+      providerId: "vibekey-exact",
+      expectedRevision: "revision-1",
+      baseUrl: "",
+      apiKey: "",
+      allowNoApiKey: false,
+    };
+    await expect(
+      ports.opencodeModels.fetchProviderModels(request),
+    ).resolves.toEqual({ models: [{ id: "grok-4.7" }], truncated: false });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(
+      "fetch_opencode_provider_models",
+      { request },
+    );
+    for (const extra of [
+      { providerId: " " },
+      { providerId: 42 },
+      { expectedRevision: 42 },
+      { provider: { options: { apiKey: "private" } } },
+      { path: "/private/config.json" },
+      { includeApiKey: true },
+      { connection: { baseUrl: "https://untrusted.test" } },
+    ]) {
+      await expect(
+        ports.opencodeModels.fetchProviderModels(
+          Object.assign({}, request, extra),
+        ),
+      ).rejects.toThrow("OpenCode model request is invalid");
+    }
+    expect(invoke).toHaveBeenCalledOnce();
+    invoke.mockResolvedValue({
+      providers: [
+        {
+          id: "vibekey-exact",
+          name: "VibeKey",
+          editable: true,
+          modelIds: ["grok-4.6"],
+          apiKey: "private-saved-key",
+        },
+      ],
+      revision: "revision-1",
+      path: "opencode.json",
+      backupPath: "opencode.json.backup",
+      exists: true,
+    });
+    await expect(ports.opencodeModels.getSnapshot()).rejects.toThrow(
+      "OpenCode model snapshot is unavailable",
+    );
   });
 
   it("rejects a Provider map whose key and public ID disagree", async () => {

@@ -12,23 +12,32 @@ import {
 } from "../../../../domain/configuration/providerApi";
 import { invoke } from "@tauri-apps/api/core";
 import { parseFileWriteTarget as parseModelWriteTarget } from "../../../features/file-writes";
+import { createOmpModelsPort } from "./ompModels";
 import { parseProviderLiveSummary } from "./providerLiveSummary";
 
 import type { FeaturePorts } from "../../../features/ports";
-import type {
-  FetchedModelList,
-  FetchedModelRef,
-  ModelProbeRequest,
-  ModelProbeResult,
-  ModelProbeSnapshot,
-  OpenCodeFetchModelsRequest,
-  OpenCodeModelSnapshot,
-  OpenCodeSaveModelsRequest,
-  ProviderAppId,
-  ProviderQuickSetupRequest,
-  ProviderSummaryQueryData,
-  ReachabilityResult,
-  WorkBuddySaveModelsResult,
+import {
+  BATCH_SETUP_TARGET_IDS,
+  SAVED_MODEL_PROBE_CATEGORIES,
+  type BatchProviderApplyRequest,
+  type BatchProviderApplyResult,
+  type BatchProviderPreviewRequest,
+  type BatchProviderPreviewResult,
+  type FetchedModelList,
+  type FetchedModelRef,
+  type ModelProbeRequest,
+  type ModelProbeResult,
+  type ModelProbeSnapshot,
+  type OpenCodeFetchModelsRequest,
+  type OpenCodeModelSnapshot,
+  type OpenCodeSaveModelsRequest,
+  type ProviderAppId,
+  type ProviderQuickSetupRequest,
+  type ProviderSummaryQueryData,
+  type ReachabilityResult,
+  type SavedModelProbeRequest,
+  type SavedModelProbeResult,
+  type WorkBuddySaveModelsResult,
 } from "../../../features/types";
 import {
   hasExactKeys,
@@ -124,7 +133,18 @@ function assertOpenCodeFetchRequest(
 ): OpenCodeFetchModelsRequest {
   if (
     !isRecord(request) ||
-    !hasExactKeys(request, ["baseUrl", "apiKey", "allowNoApiKey"]) ||
+    !hasRequiredAndOptionalKeys(
+      request,
+      ["baseUrl", "apiKey", "allowNoApiKey"],
+      ["providerId", "expectedRevision"],
+    ) ||
+    (request.providerId !== undefined &&
+      request.providerId !== null &&
+      (typeof request.providerId !== "string" ||
+        request.providerId.trim().length === 0)) ||
+    (request.expectedRevision !== undefined &&
+      request.expectedRevision !== null &&
+      typeof request.expectedRevision !== "string") ||
     typeof request.baseUrl !== "string" ||
     typeof request.apiKey !== "string" ||
     typeof request.allowNoApiKey !== "boolean"
@@ -676,11 +696,191 @@ function assertQuickSetupRequest(
   return request;
 }
 
+function assertBatchSetupTargetSpec(spec: unknown) {
+  if (
+    !isRecord(spec) ||
+    !hasRequiredAndOptionalKeys(
+      spec,
+      ["target", "providerId", "providerName", "baseUrl", "modelId"],
+      ["extraModelIds", "protocol"],
+    ) ||
+    !isOneOf(spec.target, BATCH_SETUP_TARGET_IDS) ||
+    typeof spec.providerId !== "string" ||
+    typeof spec.providerName !== "string" ||
+    typeof spec.baseUrl !== "string" ||
+    typeof spec.modelId !== "string" ||
+    (spec.extraModelIds !== undefined && !isStringArray(spec.extraModelIds)) ||
+    (spec.protocol !== undefined && !isApiProtocol(spec.protocol))
+  ) {
+    throw new Error("Batch provider setup request is invalid");
+  }
+}
+
+function assertBatchPreviewRequest(
+  request: BatchProviderPreviewRequest,
+): BatchProviderPreviewRequest {
+  if (
+    !isRecord(request) ||
+    !hasExactKeys(request, ["targets"]) ||
+    !Array.isArray(request.targets) ||
+    request.targets.length === 0
+  ) {
+    throw new Error("Batch provider setup request is invalid");
+  }
+  request.targets.forEach(assertBatchSetupTargetSpec);
+  return request;
+}
+
+function assertBatchApplyRequest(
+  request: BatchProviderApplyRequest,
+): BatchProviderApplyRequest {
+  if (
+    !isRecord(request) ||
+    !hasExactKeys(request, ["apiKey", "targets"]) ||
+    typeof request.apiKey !== "string" ||
+    !Array.isArray(request.targets) ||
+    request.targets.length === 0
+  ) {
+    throw new Error("Batch provider setup request is invalid");
+  }
+  request.targets.forEach(assertBatchSetupTargetSpec);
+  return request;
+}
+
+function parseBatchPreviewResult(value: unknown): BatchProviderPreviewResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["items"]) ||
+    !Array.isArray(value.items)
+  ) {
+    throw new Error("Batch provider preview result is unavailable");
+  }
+  const items = value.items.map((item) => {
+    if (
+      !isRecord(item) ||
+      !hasRequiredAndOptionalKeys(
+        item,
+        ["target", "paths", "baseUrl", "modelId", "ready"],
+        ["warning"],
+      ) ||
+      !isOneOf(item.target, BATCH_SETUP_TARGET_IDS) ||
+      !isStringArray(item.paths) ||
+      typeof item.baseUrl !== "string" ||
+      typeof item.modelId !== "string" ||
+      typeof item.ready !== "boolean" ||
+      (item.warning !== undefined &&
+        item.warning !== null &&
+        typeof item.warning !== "string")
+    ) {
+      throw new Error("Batch provider preview result is unavailable");
+    }
+    return {
+      target: item.target,
+      paths: item.paths,
+      baseUrl: item.baseUrl,
+      modelId: item.modelId,
+      ready: item.ready,
+      ...(typeof item.warning === "string" ? { warning: item.warning } : {}),
+    };
+  });
+  return { items };
+}
+
+function parseBatchApplyResult(value: unknown): BatchProviderApplyResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["outcomes"]) ||
+    !Array.isArray(value.outcomes)
+  ) {
+    throw new Error("Batch provider apply result is unavailable");
+  }
+  const outcomes = value.outcomes.map((item) => {
+    if (
+      !isRecord(item) ||
+      !hasExactKeys(item, ["target", "status", "message", "paths"]) ||
+      !isOneOf(item.target, BATCH_SETUP_TARGET_IDS) ||
+      !isOneOf(item.status, ["applied", "failed"] as const) ||
+      typeof item.message !== "string" ||
+      !isStringArray(item.paths)
+    ) {
+      throw new Error("Batch provider apply result is unavailable");
+    }
+    return {
+      target: item.target,
+      status: item.status,
+      message: item.message,
+      paths: item.paths,
+    };
+  });
+  return { outcomes };
+}
+
+function assertSavedModelProbeRequest(
+  request: SavedModelProbeRequest,
+): SavedModelProbeRequest {
+  if (
+    !isRecord(request) ||
+    !hasRequiredAndOptionalKeys(
+      request,
+      ["target", "modelId"],
+      ["providerId"],
+    ) ||
+    !isOneOf(request.target, BATCH_SETUP_TARGET_IDS) ||
+    typeof request.modelId !== "string" ||
+    request.modelId.trim().length === 0 ||
+    (request.providerId !== undefined &&
+      request.providerId !== null &&
+      typeof request.providerId !== "string")
+  ) {
+    throw new Error("Saved model probe request is invalid");
+  }
+  return {
+    target: request.target,
+    modelId: request.modelId.trim(),
+    ...(request.providerId !== undefined
+      ? { providerId: request.providerId }
+      : {}),
+  };
+}
+
+function parseSavedModelProbeResult(value: unknown): SavedModelProbeResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "category",
+      "ok",
+      "latencyMs",
+      "httpStatus",
+      "message",
+    ]) ||
+    !isOneOf(value.category, SAVED_MODEL_PROBE_CATEGORIES) ||
+    typeof value.ok !== "boolean" ||
+    typeof value.message !== "string" ||
+    (value.latencyMs !== null &&
+      (typeof value.latencyMs !== "number" ||
+        !Number.isFinite(value.latencyMs) ||
+        value.latencyMs < 0)) ||
+    (value.httpStatus !== null &&
+      (typeof value.httpStatus !== "number" ||
+        !Number.isInteger(value.httpStatus)))
+  ) {
+    throw new Error("Saved model probe result is unavailable");
+  }
+  return {
+    category: value.category,
+    ok: value.ok,
+    latencyMs: value.latencyMs,
+    httpStatus: value.httpStatus,
+    message: value.message,
+  };
+}
+
 export function createModelFeaturePorts(): Pick<
   FeaturePorts,
-  "providers" | "workbuddy" | "opencodeModels"
+  "providers" | "workbuddy" | "opencodeModels" | "ompModels"
 > {
   return {
+    ompModels: createOmpModelsPort(),
     providers: {
       ...providerAggregationPorts,
       previewClaudeQuickSetup: async (request) =>
@@ -693,6 +893,24 @@ export function createModelFeaturePorts(): Pick<
         parseClaudeQuickSetupOutcome(
           await invoke<unknown>("apply_claude_quick_setup_preview", {
             request: parseClaudeQuickSetupApplyRequest(request),
+          }),
+        ),
+      previewBatchSetup: async (request: BatchProviderPreviewRequest) =>
+        parseBatchPreviewResult(
+          await invoke<unknown>("preview_batch_provider_setup", {
+            request: assertBatchPreviewRequest(request),
+          }),
+        ),
+      applyBatchSetup: async (request: BatchProviderApplyRequest) =>
+        parseBatchApplyResult(
+          await invoke<unknown>("apply_batch_provider_setup", {
+            request: assertBatchApplyRequest(request),
+          }),
+        ),
+      probeSavedModel: async (request: SavedModelProbeRequest) =>
+        parseSavedModelProbeResult(
+          await invoke<unknown>("probe_saved_model", {
+            request: assertSavedModelProbeRequest(request),
           }),
         ),
       getSummary: async (app) =>

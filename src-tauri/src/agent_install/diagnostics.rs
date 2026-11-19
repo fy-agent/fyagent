@@ -118,9 +118,12 @@ pub(crate) fn agent_reason_from_installer_parts(
         InstallerErrorCode::WindowsPackageInUse => AgentReasonCode::ApplicationRunning,
         InstallerErrorCode::WindowsDeploymentBlocked
         | InstallerErrorCode::WindowsDependencyMissing => AgentReasonCode::AuthorizationRequired,
-        InstallerErrorCode::WindowsDeploymentFailed
-        | InstallerErrorCode::LaunchFailed
-        | InstallerErrorCode::InternalError => AgentReasonCode::InteractiveUserUnavailable,
+        InstallerErrorCode::WindowsDeploymentFailed => {
+            AgentReasonCode::InstallerArtifactUnavailable
+        }
+        InstallerErrorCode::LaunchFailed | InstallerErrorCode::InternalError => {
+            AgentReasonCode::InteractiveUserUnavailable
+        }
         InstallerErrorCode::MultipleInstallations
         | InstallerErrorCode::InstallationVerifyFailed => {
             AgentReasonCode::InstallationVerificationFailed
@@ -170,6 +173,11 @@ fn platform_reason(platform_error_code: Option<&str>) -> Option<AgentReasonCode>
         Some("target_not_writable") => Some(AgentReasonCode::PathNotWritable),
         Some("tool_candidate_conflict") => Some(AgentReasonCode::CandidateConflict),
         Some("tool_target_changed") => Some(AgentReasonCode::TargetChanged),
+        Some("downloaded_file_moved") => Some(AgentReasonCode::DownloadFailed),
+        Some("interactive_user_unavailable") => Some(AgentReasonCode::InteractiveUserUnavailable),
+        Some("install_component_unconfirmed") => {
+            Some(AgentReasonCode::InstallerArtifactUnavailable)
+        }
         _ => None,
     }
 }

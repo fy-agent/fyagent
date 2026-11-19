@@ -35,6 +35,7 @@ const EXPECTED_AGENT_LINK_IDS = {
   codex: ["product", "desktop", "download", "terms"],
   "claude-code": ["product", "download", "terms"],
   opencode: ["product", "desktop", "license", "terms"],
+  omp: ["product", "docs", "download", "license"],
 } as const satisfies Readonly<
   Record<AgentCatalogId, readonly AgentOfficialLinkId[]>
 >;
@@ -47,6 +48,7 @@ const EXPECTED_AGENT_VARIANT_IDS = {
   codex: "codex",
   "claude-code": "claude-code",
   opencode: "opencode",
+  omp: "omp",
 } as const;
 
 function isReviewedDate(value: unknown): value is string {

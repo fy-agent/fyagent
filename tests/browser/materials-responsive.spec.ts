@@ -115,7 +115,8 @@ test("long copy remains inside a 320px detail container independently of window 
   await openRendererPage(page, "/models?target=codex");
   const panel = page.getByRole("region", { name: "Codex 模型配置" });
   await expect(panel).toBeVisible();
-  await expect(panel.locator(".fy-models-source-entry p")).toBeVisible();
+  await expect(panel.locator(".fy-models-status-item strong").first()).toBeVisible();
+  await expect(panel.locator(".fy-models-source-entry")).toBeVisible();
   await panel.evaluate((element) => {
     element.style.width = "320px";
     for (const label of element.querySelectorAll("label")) {
@@ -123,9 +124,9 @@ test("long copy remains inside a 320px detail container independently of window 
         document.createTextNode("这是需要完整展示的说明文字".repeat(4)),
       );
     }
-    const paragraph = element.querySelector(".fy-models-source-entry p");
-    if (!paragraph) throw new Error("Missing source guidance");
-    paragraph.textContent =
+    const statusValue = element.querySelector(".fy-models-status-item strong");
+    if (!statusValue) throw new Error("Missing provider status value");
+    statusValue.textContent =
       "https://gateway.example/" + "LongProviderConfigurationName".repeat(8);
   });
   const form = panel.locator(".fy-models-form");

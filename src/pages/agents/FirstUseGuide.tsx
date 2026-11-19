@@ -20,9 +20,7 @@ import {
   firstUseRecommendations,
   GUIDE_PURPOSES,
   type GuidePurpose,
-  startingPresetForAgent,
 } from "./firstUseRecommendations";
-import { FirstInstallPathPanel } from "./FirstInstallPathPanel";
 import "./FirstUseGuide.css";
 
 export type AgentConfigIntent = "keep" | "replace" | "inspect";
@@ -101,6 +99,14 @@ async function checkExistingAgentConfiguration(
         return {
           status: "configured",
           summary: `实际配置文件：已配置 ${snapshot.providers.length} 个模型提供商`,
+        };
+      }
+    } else if (agentId === "omp") {
+      const config = await ports.ompModels.readConfig();
+      if (config.providers.length > 0) {
+        return {
+          status: "configured",
+          summary: `实际配置文件：已配置 ${config.providers.length} 个模型提供商`,
         };
       }
     }
@@ -271,48 +277,36 @@ export function FirstUseGuide({ entries, onConfigure }: FirstUseGuideProps) {
       </h1>
       {purpose ? (
         <div className="fy-first-use-recommendations">
-          {recommendations.map(({ entry, reason }) => {
-            const preset = purpose
-              ? startingPresetForAgent(entry.id, purpose)
-              : undefined;
-            return (
-              <article
-                key={entry.id}
-                className="fy-first-use-recommendation"
-                data-agent-id={entry.id}
-              >
-                <BrandIconFrame asset={getAgentBrand(entry.id)} size="detail" />
-                <div className="fy-first-use-recommendation-content">
-                  <h2>{entry.displayName}</h2>
-                  <p className="fy-first-use-recommendation-reason">{reason}</p>
-                  {preset ? (
-                    <div className="fy-first-use-preset-hint">
-                      <span className="fy-first-use-preset-category">
-                        {preset.category}
-                      </span>
-                      <span className="fy-first-use-preset-name">
-                        建议起始指令：{preset.name}
-                      </span>
-                    </div>
-                  ) : null}
+          {recommendations.map(({ entry, reason, badge }) => (
+            <article
+              key={entry.id}
+              className="fy-first-use-recommendation"
+              data-agent-id={entry.id}
+            >
+              <BrandIconFrame asset={getAgentBrand(entry.id)} size="detail" />
+              <div className="fy-first-use-recommendation-content">
+                <h2>{entry.displayName}</h2>
+                <p className="fy-first-use-recommendation-reason">{reason}</p>
+                <div className="fy-first-use-preset-hint">
+                  <span className="fy-first-use-preset-category">{badge}</span>
                 </div>
-                <div className="fy-first-use-recommendation-action">
-                  <Button
-                    className="fy-first-use-entry-btn"
-                    disabled={isPending || !visible}
-                    onClick={(event) => {
-                      originRef.current = event.currentTarget;
-                      void handleSelectAgent(entry);
-                    }}
-                  >
-                    开始配置
-                  </Button>
-                </div>
-              </article>
-            );
-          })}
+              </div>
+              <div className="fy-first-use-recommendation-action">
+                <Button
+                  className="fy-first-use-entry-btn"
+                  disabled={isPending || !visible}
+                  onClick={(event) => {
+                    originRef.current = event.currentTarget;
+                    void handleSelectAgent(entry);
+                  }}
+                >
+                  开始配置
+                </Button>
+              </div>
+            </article>
+          ))}
           {recommendations.length === 0 ? (
-            <p>可在软件目录中查看其他选择。</p>
+            <p>可在软件目录中查看全部软件。</p>
           ) : null}
         </div>
       ) : (
@@ -365,7 +359,6 @@ export function FirstUseGuide({ entries, onConfigure }: FirstUseGuideProps) {
           </Button>
         )}
       </footer>
-      <FirstInstallPathPanel />
 
       <Dialog
         open={existingConfigState !== null}
@@ -435,8 +428,8 @@ export function FirstUseGuide({ entries, onConfigure }: FirstUseGuideProps) {
           existingConfigState.status === "unknown" ? (
             <div className="fy-first-use-existing-config-content">
               <p>
-                无法确认 {existingConfigState.entry.displayName}{" "}
-                的现有配置状态。当前不确定是否存在可用配置。
+                暂时无法读取 {existingConfigState.entry.displayName}{" "}
+                的配置状态。
               </p>
               {existingConfigState.message ? (
                 <p className="fy-first-use-keep-notice">
@@ -447,15 +440,11 @@ export function FirstUseGuide({ entries, onConfigure }: FirstUseGuideProps) {
           ) : (
             <div className="fy-first-use-existing-config-content">
               <p>
-                检测到 {existingConfigState.entry.displayName}{" "}
-                的实际配置文件中已有设置
+                已检测到 {existingConfigState.entry.displayName} 的现有配置
                 {existingConfigState.summary
                   ? `（${existingConfigState.summary}）`
                   : ""}
-                。你可以保留现有设置，或进入重新配置。尚未测试连接。
-              </p>
-              <p className="fy-first-use-keep-notice">
-                保留现有配置不会发起模型网络请求。
+                ，要保留还是重新配置？
               </p>
             </div>
           )

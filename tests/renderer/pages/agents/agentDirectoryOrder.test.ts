@@ -6,6 +6,7 @@ import {
 } from "@/shared/features/agent-install-readiness";
 import {
   AGENT_CATALOG_IDS,
+  AGENT_DISPLAY_ORDER,
   agentDirectoryPriority,
   type AgentCatalogId,
 } from "@/shared/features/directory";
@@ -146,25 +147,31 @@ describe("agentDirectoryPriority", () => {
     expect(agentDirectoryPriority("codex")).toBe("standard");
     expect(agentDirectoryPriority("claude-code")).toBe("standard");
     expect(agentDirectoryPriority("opencode")).toBe("standard");
+    expect(agentDirectoryPriority("omp")).toBe("standard");
   });
 });
 
 describe("classifyAgentDirectoryOrderBucket", () => {
-  it("classifies every install state into the closed bucket set", () => {
+  it("classifies configurable vs official-only entries into closed buckets", () => {
     const cases: Array<{
       agentId: AgentCatalogId;
       scan: AgentDirectoryScanView;
       bucket: AgentDirectoryOrderBucket;
     }> = [
       {
-        agentId: "qoderwork",
-        scan: completeScan({ qoderwork: "installed" }),
+        agentId: "workbuddy",
+        scan: completeScan({ workbuddy: "installed" }),
         bucket: "installed_domestic",
       },
       {
         agentId: "qoderwork",
-        scan: completeScan({ qoderwork: "installed_not_runnable" }),
-        bucket: "installed_domestic",
+        scan: completeScan({ qoderwork: "installed" }),
+        bucket: "official_only_installed",
+      },
+      {
+        agentId: "trae-work",
+        scan: completeScan({ "trae-work": "not_installed" }),
+        bucket: "official_only_other",
       },
       {
         agentId: "codex",
@@ -172,8 +179,8 @@ describe("classifyAgentDirectoryOrderBucket", () => {
         bucket: "installed_other",
       },
       {
-        agentId: "opencode",
-        scan: completeScan({ opencode: "installed_not_runnable" }),
+        agentId: "omp",
+        scan: completeScan({ omp: "installed_not_runnable" }),
         bucket: "installed_other",
       },
       {
@@ -182,23 +189,8 @@ describe("classifyAgentDirectoryOrderBucket", () => {
         bucket: "not_installed",
       },
       {
-        agentId: "trae-work",
-        scan: completeScan({ "trae-work": "unknown" }),
-        bucket: "unresolved",
-      },
-      {
         agentId: "claude-code",
         scan: completeScan({ "claude-code": "unavailable" }),
-        bucket: "unresolved",
-      },
-      {
-        agentId: "grokbuild",
-        scan: completeScan({ grokbuild: "error" }),
-        bucket: "unresolved",
-      },
-      {
-        agentId: "codex",
-        scan: scanView({ status: "scanning", settledIds: [], results: {} }),
         bucket: "unresolved",
       },
       {
@@ -214,19 +206,33 @@ describe("classifyAgentDirectoryOrderBucket", () => {
       );
     }
   });
-
-  it("keeps current failure unresolved even when stale readiness is installed", () => {
-    const scan = scanView({
-      currentFailureIds: ["codex"],
-      results: { codex: readiness("codex", "installed") },
-    });
-    expect(classifyAgentDirectoryOrderBucket("codex", scan)).toBe("unresolved");
-    expect(scan.results.codex?.installState).toBe("installed");
-  });
 });
 
 describe("orderAgentDirectoryEntries", () => {
-  it("orders example A: installed domestic, then installed other, then not installed", () => {
+  it("places configurable installed entries first and demotes official-only entries to the bottom", () => {
+    const scan = completeScan({
+      qoderwork: "installed",
+      "trae-work": "installed",
+      workbuddy: "installed",
+      grokbuild: "not_installed",
+      codex: "installed",
+      "claude-code": "not_installed",
+      opencode: "installed",
+      omp: "installed",
+    });
+    expect(orderedIds(scan)).toEqual([
+      "workbuddy",
+      "codex",
+      "opencode",
+      "omp",
+      "claude-code",
+      "grokbuild",
+      "qoderwork",
+      "trae-work",
+    ]);
+  });
+
+  it("keeps official-only installed above official-only missing, both below configurable missing", () => {
     const scan = completeScan({
       qoderwork: "not_installed",
       "trae-work": "installed",
@@ -234,332 +240,50 @@ describe("orderAgentDirectoryEntries", () => {
       grokbuild: "installed",
       codex: "installed",
       "claude-code": "not_installed",
-      opencode: "installed",
-    });
-    expect(orderedIds(scan)).toEqual([
-      "trae-work",
-      "grokbuild",
-      "codex",
-      "opencode",
-      "qoderwork",
-      "workbuddy",
-      "claude-code",
-    ]);
-  });
-
-  it("does not let uninstalled domestic products jump over installed non-domestic products", () => {
-    const scan = completeScan({
-      qoderwork: "not_installed",
-      "trae-work": "not_installed",
-      workbuddy: "not_installed",
-      grokbuild: "installed",
-      codex: "installed",
-      "claude-code": "not_installed",
       opencode: "not_installed",
+      omp: "not_installed",
     });
     expect(orderedIds(scan)).toEqual([
-      "grokbuild",
       "codex",
-      "qoderwork",
-      "trae-work",
+      "grokbuild",
       "workbuddy",
       "claude-code",
       "opencode",
-    ]);
-  });
-
-  it("orders example B with installed_not_runnable, unknown, error, and unavailable", () => {
-    const scan = completeScan({
-      qoderwork: "installed_not_runnable",
-      "trae-work": "unknown",
-      workbuddy: "installed",
-      grokbuild: "error",
-      codex: "not_installed",
-      "claude-code": "unavailable",
-      opencode: "installed",
-    });
-    expect(orderedIds(scan)).toEqual([
-      "qoderwork",
-      "workbuddy",
-      "opencode",
+      "omp",
       "trae-work",
-      "grokbuild",
-      "claude-code",
-      "codex",
-    ]);
-  });
-
-  it("keeps canonical ties inside each bucket", () => {
-    const allInstalled = completeScan({
-      qoderwork: "installed",
-      "trae-work": "installed_not_runnable",
-      workbuddy: "installed",
-      grokbuild: "installed",
-      codex: "installed_not_runnable",
-      "claude-code": "installed",
-      opencode: "installed",
-    });
-    expect(orderedIds(allInstalled)).toEqual([...AGENT_CATALOG_IDS]);
-
-    const allMissing = completeScan({
-      qoderwork: "not_installed",
-      "trae-work": "not_installed",
-      workbuddy: "not_installed",
-      grokbuild: "not_installed",
-      codex: "not_installed",
-      "claude-code": "not_installed",
-      opencode: "not_installed",
-    });
-    expect(orderedIds(allMissing)).toEqual([...AGENT_CATALOG_IDS]);
-
-    const allUnresolved = completeScan({
-      qoderwork: "unknown",
-      "trae-work": "unavailable",
-      workbuddy: "error",
-      grokbuild: "unknown",
-      codex: "unavailable",
-      "claude-code": "unavailable",
-      opencode: "unknown",
-    });
-    expect(orderedIds(allUnresolved)).toEqual([...AGENT_CATALOG_IDS]);
-
-    const noCurrentResults = scanView({
-      results: {},
-      currentFailureIds: [],
-    });
-    expect(orderedIds(noCurrentResults)).toEqual([...AGENT_CATALOG_IDS]);
-  });
-
-  it("sorts a stale installed current failure below confirmed installed rows", () => {
-    const scan = completeScan({
-      qoderwork: "installed",
-      "trae-work": "not_installed",
-      workbuddy: "not_installed",
-      grokbuild: "not_installed",
-      codex: "stale_failure",
-      "claude-code": "not_installed",
-      opencode: "not_installed",
-    });
-    expect(orderedIds(scan)).toEqual([
       "qoderwork",
-      "codex",
-      "trae-work",
-      "workbuddy",
-      "grokbuild",
-      "claude-code",
-      "opencode",
     ]);
   });
 
-  it("does not mutate the input catalog array or entry objects", () => {
-    const entries = CATALOG.map((entry) => ({ id: entry.id }));
-    const snapshot = entries.map((entry) => entry.id);
-    Object.freeze(entries);
-    const scan = completeScan({
-      "trae-work": "installed",
-      grokbuild: "installed",
-      qoderwork: "not_installed",
-    });
-    const ordered = orderAgentDirectoryEntries(entries, scan);
-    expect(ordered).not.toBe(entries);
-    expect(entries.map((entry) => entry.id)).toEqual(snapshot);
-    expect(ordered[0]).toBe(entries[1]);
-    expect(ordered.map((entry) => entry.id)).toEqual([
-      "trae-work",
-      "grokbuild",
-      "qoderwork",
-      "workbuddy",
-      "codex",
-      "claude-code",
-      "opencode",
-    ]);
-  });
-});
-
-describe("committed directory order lifecycle", () => {
-  it("keeps canonical order while the first scan is incomplete", () => {
-    const scanning = scanView({
-      status: "scanning",
-      settledIds: ["qoderwork"],
-      results: { qoderwork: readiness("qoderwork", "installed") },
-    });
-    expect(nextCommittedAgentDirectoryOrderIds(scanning, null)).toBeNull();
+  it("keeps canonical display order ties inside each bucket and before scan completes", () => {
+    const allMissing = completeScan({});
+    expect(orderedIds(allMissing)).toEqual([...AGENT_DISPLAY_ORDER]);
     expect(
       applyCommittedAgentDirectoryOrder(CATALOG, null).map((entry) => entry.id),
-    ).toEqual([...AGENT_CATALOG_IDS]);
+    ).toEqual([...AGENT_DISPLAY_ORDER]);
   });
 
-  it("does not reorder as individual rows settle", () => {
-    const previous = nextCommittedAgentDirectoryOrderIds(
-      scanView({ status: "scanning", settledIds: [], results: {} }),
-      null,
-    );
-    const midScan = scanView({
-      status: "scanning",
-      settledIds: ["qoderwork", "codex"],
-      results: {
-        qoderwork: readiness("qoderwork", "not_installed"),
-        codex: readiness("codex", "installed"),
-      },
-    });
-    expect(nextCommittedAgentDirectoryOrderIds(midScan, previous)).toBeNull();
-    expect(
-      applyCommittedAgentDirectoryOrder(CATALOG, previous).map(
-        (entry) => entry.id,
-      ),
-    ).toEqual([...AGENT_CATALOG_IDS]);
-  });
-
-  it("commits bucket order once the first scan completes", () => {
-    const scan = completeScan({
-      qoderwork: "not_installed",
-      "trae-work": "installed",
-      grokbuild: "installed",
-    });
-    expect(nextCommittedAgentDirectoryOrderIds(scan, null)).toEqual([
-      "trae-work",
-      "grokbuild",
-      "qoderwork",
-      "workbuddy",
-      "codex",
-      "claude-code",
-      "opencode",
-    ]);
-  });
-
-  it("freezes the previous committed order during a rescan", () => {
-    const committed = orderedIds(
-      completeScan({
-        "trae-work": "installed",
-        grokbuild: "installed",
-      }),
-    );
-    const rescan = scanView({
-      status: "scanning",
-      settledIds: ["qoderwork"],
-      results: {
-        qoderwork: readiness("qoderwork", "installed"),
-        "trae-work": readiness("trae-work", "installed"),
-        grokbuild: readiness("grokbuild", "installed"),
-      },
-    });
-    expect(nextCommittedAgentDirectoryOrderIds(rescan, committed)).toEqual(
-      committed,
-    );
-    expect(
-      applyCommittedAgentDirectoryOrder(CATALOG, committed).map(
-        (entry) => entry.id,
-      ),
-    ).toEqual(committed);
-  });
-
-  it("replaces the committed order once when a rescan completes", () => {
-    const previous = orderedIds(
-      completeScan({
-        "trae-work": "installed",
-        grokbuild: "installed",
-      }),
-    );
-    const rescanComplete = completeScan({
-      qoderwork: "installed",
-      grokbuild: "not_installed",
-    });
-    expect(
-      nextCommittedAgentDirectoryOrderIds(rescanComplete, previous),
-    ).toEqual([
-      "qoderwork",
-      "trae-work",
-      "workbuddy",
-      "grokbuild",
-      "codex",
-      "claude-code",
-      "opencode",
-    ]);
-  });
-
-  it("reorders after an authoritative applyReadiness while not scanning", () => {
-    let state = finishScan({
-      qoderwork: "not_installed",
-      grokbuild: "installed",
-    });
-    expect(state.committedOrderIds).toEqual([
-      "grokbuild",
-      "qoderwork",
-      "trae-work",
-      "workbuddy",
-      "codex",
-      "claude-code",
-      "opencode",
-    ]);
-
-    state = scanReducer(state, {
-      type: "applyReadiness",
-      agentId: "qoderwork",
-      data: readiness("qoderwork", "installed"),
-    });
-    expect(state.status).toBe("complete");
-    expect(state.committedOrderIds).toEqual([
-      "qoderwork",
-      "grokbuild",
-      "trae-work",
-      "workbuddy",
-      "codex",
-      "claude-code",
-      "opencode",
-    ]);
-  });
-
-  it("does not commit a new order from applyReadiness during a scan", () => {
-    let state = finishScan({ grokbuild: "installed" });
-    const frozen = state.committedOrderIds;
-    state = scanReducer(state, { type: "start", requestId: 3 });
-    state = scanReducer(state, {
-      type: "applyReadiness",
-      agentId: "qoderwork",
-      data: readiness("qoderwork", "installed"),
-    });
-    expect(state.status).toBe("scanning");
-    expect(state.committedOrderIds).toEqual(frozen);
-    expect(state.committedOrderIds).toEqual([
-      "grokbuild",
-      "qoderwork",
-      "trae-work",
-      "workbuddy",
-      "codex",
-      "claude-code",
-      "opencode",
-    ]);
-  });
-});
-
-describe("scanReducer committed order", () => {
   it("preserves committed order across start and commits a new order on finish", () => {
     let state = finishScan({
-      "trae-work": "installed",
+      codex: "installed",
       grokbuild: "installed",
     });
     const firstCommit = state.committedOrderIds;
-    expect(firstCommit?.[0]).toBe("trae-work");
+    expect(firstCommit?.[0]).toBe("codex");
 
     state = scanReducer(state, { type: "start", requestId: 4 });
     expect(state.status).toBe("scanning");
     expect(state.committedOrderIds).toBe(firstCommit);
 
-    state = scanReducer(state, {
-      type: "settled",
-      requestId: 4,
-      agentId: "qoderwork",
-      data: readiness("qoderwork", "installed"),
-    });
-    expect(state.committedOrderIds).toBe(firstCommit);
-
     for (const agentId of AGENT_CATALOG_IDS) {
-      if (agentId === "qoderwork") continue;
       state = scanReducer(state, {
         type: "settled",
         requestId: 4,
         agentId,
-        data: readiness(agentId, "not_installed"),
+        data: readiness(
+          agentId,
+          agentId === "workbuddy" ? "installed" : "not_installed",
+        ),
       });
     }
     state = scanReducer(state, {
@@ -567,14 +291,16 @@ describe("scanReducer committed order", () => {
       requestId: 4,
       finishedAt: 4,
     });
-    expect(state.committedOrderIds).toEqual([
+    expect(state.committedOrderIds?.[0]).toBe("workbuddy");
+    expect(state.committedOrderIds?.slice(-2)).toEqual([
       "qoderwork",
       "trae-work",
-      "workbuddy",
-      "grokbuild",
-      "codex",
-      "claude-code",
-      "opencode",
     ]);
+    expect(
+      nextCommittedAgentDirectoryOrderIds(
+        scanView({ status: "scanning" }),
+        state.committedOrderIds,
+      ),
+    ).toEqual(state.committedOrderIds);
   });
 });
