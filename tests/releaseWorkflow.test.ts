@@ -276,7 +276,7 @@ function expectExactLine(source: string, line: string) {
 }
 
 type WindowsReleaseMatrixRow = {
-  runner: string;
+  runner?: string;
   target_group: string;
   architecture: string;
   rust_target?: string;
@@ -328,12 +328,10 @@ const WINDOWS_RELEASE_MATRIX_CONTRACTS = [
     nextJob: "seal-windows-formal",
     rows: [
       {
-        runner: "fyagent-simplysign",
         target_group: "windows-x64",
         architecture: "x64",
       },
       {
-        runner: "fyagent-simplysign",
         target_group: "windows-arm64",
         architecture: "arm64",
       },
@@ -1581,12 +1579,13 @@ describe("FyAgent release workflow", () => {
     expect(trigger).toContain("type: choice");
     expect(trigger).toContain("default: preflight");
     expect(trigger).toContain("          - preflight");
+    expect(trigger).toContain("          - signed-preflight");
     expect(trigger).toContain("          - formal");
     expect(trigger).toContain("          - formal-repair");
     expect(trigger).toContain("source_sha:");
     expect(trigger).toContain("release_tag:");
     expect(trigger).toContain(
-      "Immutable 40-character candidate commit. Required for preflight and formal-repair. Leave empty for tag formal.",
+      "Immutable 40-character candidate commit. Required for preflight, signed-preflight and formal-repair. Leave empty for tag formal.",
     );
     expect(trigger).toContain("        required: false");
     expect(source).toContain("release_mode='preflight'");
@@ -1605,6 +1604,53 @@ describe("FyAgent release workflow", () => {
     expect(source).not.toContain("gh release create");
     expect(source).toContain("draft:true,prerelease:false");
     expect(source).toContain("draft:false,prerelease:false");
+  });
+
+  it("signs only the exact protected main revision during rehearsal and cannot publish it", () => {
+    const eligibility = workflowJobBlock(
+      source,
+      "eligibility",
+      "build-windows",
+    );
+    const request = namedStepBlock(
+      eligibility,
+      "Validate the untrusted request envelope before checkout",
+    );
+    expect(request).toContain("preflight|signed-preflight)");
+    expect(request).toContain("[ \"$GITHUB_REF\" = 'refs/heads/main' ]");
+    expect(request).toContain(
+      '[ "$GITHUB_REF_PROTECTED" = \'true\' ] && [ "$DISPATCH_SOURCE_SHA" = "$GITHUB_WORKFLOW_SHA" ]',
+    );
+    const contract = namedStepBlock(
+      eligibility,
+      "Validate repository, workflow, ref, source, and version",
+    );
+    expect(contract).toContain(
+      '[ "$GITHUB_REF_PROTECTED" = \'true\' ] && [ "$source_sha" = "$workflow_commit" ]',
+    );
+    expect(contract).toContain("release_mode=\'preflight\'");
+    expect(contract).toContain("windows_signing_rehearsal=true");
+    const signer = workflowJobBlock(
+      source,
+      "sign-windows-formal",
+      "seal-windows-formal",
+    );
+    expect(signer).toContain(
+      "Signed preflight requires the pinned Certum key on the dedicated signing runner.",
+    );
+    const sealer = workflowJobBlock(
+      source,
+      "seal-windows-formal",
+      "admit-offline-windows-formal",
+    );
+    expect(sealer).toContain("$env:PUBLIC_SIGNING_MODE = \'provider\'");
+    const verify = workflowJobBlock(source, "verify-assets", "attest");
+    expect(verify).toContain(
+      '.mode == "signed" and all(.assets[]; .signature.status == "Valid")',
+    );
+    const publish = source.slice(source.indexOf("\n  publish:\n"));
+    expect(publish).toContain(PUBLISH_JOB_IF_LINE);
+    expect(publish).not.toContain("signed-preflight");
   });
 
   it("makes attestation and formal publication status propagation explicit and fail-closed", () => {
@@ -1869,12 +1915,13 @@ describe("FyAgent release workflow", () => {
         name: `${contract.job} runner swap`,
         workflow: mutateReleaseJob(source, contract, (job) => {
           const [first, second] = contract.rows;
-          if (first.runner !== second.runner) {
+          if ("runner" in first && "runner" in second) {
             return swapFirstPair(job, first.runner, second.runner);
           }
-          return job
-            .split(`runner: ${first.runner}`)
-            .join("runner: wrong-signing-runner");
+          return job.replace(
+            "          - target_group: windows-x64",
+            "          - runner: wrong-signing-runner\n            target_group: windows-x64",
+          );
         }),
       },
       {
@@ -1887,7 +1934,7 @@ describe("FyAgent release workflow", () => {
               : "";
           return job.replace(
             "    env:\n",
-            `          - runner: ${row.runner}\n            target_group: ${row.target_group}\n            architecture: ${row.architecture}${rustTarget}\n    env:\n`,
+            `          - target_group: ${row.target_group}\n            architecture: ${row.architecture}${rustTarget}\n    env:\n`,
           );
         }),
       },
@@ -2011,7 +2058,9 @@ describe("FyAgent release workflow", () => {
     expect(eligibility).toContain(
       '--evidence "$RUNNER_TEMP/fyagent-release-remote-evidence.json"',
     );
-    expect(eligibility).toContain("RELEASE_DISPATCH_MODE: ${{ inputs.mode }}");
+    expect(eligibility).toContain(
+      "RELEASE_DISPATCH_MODE: ${{ inputs.mode == 'signed-preflight' && 'preflight' || inputs.mode }}",
+    );
     expect(eligibility).toContain(
       "RELEASE_DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}",
     );
@@ -2215,7 +2264,7 @@ describe("FyAgent release workflow", () => {
     );
     expectExactLine(
       preflight,
-      "    if: needs.eligibility.outputs.release_mode == 'preflight' && github.event_name == 'workflow_dispatch'",
+      "    if: \"${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal != 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && github.event_name == 'workflow_dispatch' }}\"",
     );
     expectExactLine(
       preflight,
@@ -2285,16 +2334,18 @@ describe("FyAgent release workflow", () => {
     );
     expectExactLine(
       formal,
-      "    if: \"${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}\"",
+      "    if: \"${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal == 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild')) }}\"",
     );
     expectExactLine(
       formal,
       "    needs: [eligibility, pin-release-build-inputs]",
     );
-    expect(formal).toContain("runner: fyagent-simplysign");
+    expect(formal).toContain(
+      "runs-on: ${{ (needs.eligibility.outputs.windows_signing_rehearsal == 'true' || vars.FYAGENT_WINDOWS_SIGNING_MODE == 'provider') && 'fyagent-simplysign' || 'windows-2025' }}",
+    );
     expect(formal).not.toContain("runner: windows-11-vs2026-arm");
     expect(formal).toContain(
-      "Windows signing runner $env:RUNNER_OS/$env:RUNNER_ARCH is not the x64 SimplySign runner",
+      "Expected $env:EXPECTED_RUNNER_ENVIRONMENT Windows x64 signing runner",
     );
     expect(formal).toContain("permissions:\n      contents: read");
     expect(formal).not.toContain("id-token:");
@@ -2342,7 +2393,9 @@ describe("FyAgent release workflow", () => {
     expect(transform.slice(transform.indexOf("run: |"))).not.toContain(
       "${{ secrets.",
     );
-    expect(formal.match(/\$\{\{ secrets\./gu)).toHaveLength(2);
+    expect(
+      formal.match(/&& secrets\.FYAGENT_WINDOWS_SIGNER_[A-Z0-9_]+ \|\| ''/gu),
+    ).toHaveLength(2);
     expect(formal).toContain(
       "name: formal-candidate-${{ matrix.target_group }}",
     );
@@ -2364,7 +2417,7 @@ describe("FyAgent release workflow", () => {
     );
     expectExactLine(
       sealer,
-      "    if: \"${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}\"",
+      "    if: \"${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs['sign-windows-formal'].result == 'success' && ((needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal == 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild')) }}\"",
     );
     expectExactLine(
       sealer,
@@ -2417,7 +2470,7 @@ describe("FyAgent release workflow", () => {
     const verify = workflowJobBlock(source, "verify-assets", "attest");
     expectExactLine(
       verify,
-      "    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'offline-sealed' && needs['build-windows'].result == 'skipped' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'success')) }}",
+      "    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal != 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'skipped') || ((((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal') || (github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal == 'true')) && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'offline-sealed' && needs['build-windows'].result == 'skipped' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'success')) }}",
     );
     expect(verify).toContain(
       "    needs:\n      [\n        eligibility,\n        build-windows,\n        build-macos,\n        pin-release-build-inputs,\n        prove-windows-preflight,\n        sign-windows-formal,\n        seal-windows-formal,\n        admit-offline-windows-formal,\n      ]",

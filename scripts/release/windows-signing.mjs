@@ -254,9 +254,7 @@ export function parseCertumSimplySignCredential(value) {
   try {
     parsed = JSON.parse(value);
   } catch {
-    throw new Error(
-      "FYAGENT_WINDOWS_SIGNER_CREDENTIAL must be a JSON object",
-    );
+    throw new Error("FYAGENT_WINDOWS_SIGNER_CREDENTIAL must be a JSON object");
   }
   assert(
     parsed !== null && typeof parsed === "object" && !Array.isArray(parsed),
@@ -274,9 +272,7 @@ export function parseCertumSimplySignCredential(value) {
   }
   for (const key of CERTUM_REQUIRED_CREDENTIAL_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(parsed, key)) {
-      throw new Error(
-        `FYAGENT_WINDOWS_SIGNER_CREDENTIAL is missing ${key}`,
-      );
+      throw new Error(`FYAGENT_WINDOWS_SIGNER_CREDENTIAL is missing ${key}`);
     }
   }
   assert(
@@ -635,7 +631,7 @@ function assertExpectedSigned(evidence, signerConfiguration) {
   );
 }
 
-function runAuthenticodeProbe(assetPath) {
+function runAuthenticodeProbe(assetPath, { requireSignTool = false } = {}) {
   assert(
     process.platform === "win32",
     "Authenticode evidence must be collected on a native Windows runner",
@@ -650,6 +646,7 @@ function runAuthenticodeProbe(assetPath) {
       authenticodeEvidenceScript,
       "-ArtifactPath",
       assetPath,
+      ...(requireSignTool ? ["-RequireSignTool"] : []),
     ],
     {
       encoding: "utf8",
@@ -659,6 +656,7 @@ function runAuthenticodeProbe(assetPath) {
     },
   );
   if (result.error) throw result.error;
+  if (requireSignTool && result.stderr) process.stderr.write(result.stderr);
   assert(
     result.status === 0,
     `Authenticode evidence probe exited with ${result.status}`,
@@ -673,9 +671,9 @@ function runAuthenticodeProbe(assetPath) {
 }
 
 // The in-repo Certum / SimplySign adapter is
-// scripts/release/windows-signer-certum-simplysign.ps1. CI does not execute
-// that checkout path: sign-windows-formal base64-decodes the adapter secret
-// onto a temporary absolute .ps1 and sets FYAGENT_WINDOWS_SIGNER_ADAPTER.
+// scripts/release/windows-signer-certum-simplysign.ps1. The signer job stages
+// the configured adapter or the protected-main rehearsal copy at a temporary
+// absolute path and sets FYAGENT_WINDOWS_SIGNER_ADAPTER.
 // Repository variable FYAGENT_WINDOWS_SIGNING_MODE stays unsigned until
 // docs/release/release-identity.md is filled in.
 function runSignerAdapter({ adapterPath, assetPath, architecture }) {
@@ -730,10 +728,7 @@ export function createAssetSigningRecord(
   );
   const signerConfiguration = resolveSignerConfiguration(environment);
   if (signerConfiguration !== null) {
-    assertCertumAdapterCredential(
-      signerConfiguration.adapterPath,
-      environment,
-    );
+    assertCertumAdapterCredential(signerConfiguration.adapterPath, environment);
   }
   const probeAuthenticode =
     dependencies.probeAuthenticode ?? runAuthenticodeProbe;
@@ -811,10 +806,7 @@ export function transformWindowsCandidate(
   );
   const signerConfiguration = resolveSignerConfiguration(environment);
   if (signerConfiguration !== null) {
-    assertCertumAdapterCredential(
-      signerConfiguration.adapterPath,
-      environment,
-    );
+    assertCertumAdapterCredential(signerConfiguration.adapterPath, environment);
   }
   const probeAuthenticode =
     dependencies.probeAuthenticode ?? runAuthenticodeProbe;
@@ -954,7 +946,7 @@ export function verifySealedWindowsCandidate(
   } else {
     assertAuthenticodeOnlyMutation(rawBytes, candidateBytes);
     finalEvidence = normalizeAuthenticodeEvidence(
-      probeAuthenticode(resolvedCandidate),
+      probeAuthenticode(resolvedCandidate, { requireSignTool: true }),
     );
     assertExpectedSigned(finalEvidence, signingPolicy);
     recordMode = "signed";

@@ -1,0 +1,228 @@
+name: Windows installer lifecycle
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Release run that built the exact native Windows installers
+        required: true
+        type: string
+      source_run_attempt:
+        description: Current attempt number of that Release run
+        required: true
+        type: string
+      source_sha:
+        description: Lowercase full SHA of the Release run on main
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: windows-installer-lifecycle-${{ inputs.source_run_id }}-${{ inputs.source_run_attempt }}
+  cancel-in-progress: false
+
+jobs:
+  lifecycle:
+    name: Windows ${{ matrix.architecture }} installer lifecycle
+    if: github.repository == 'fy-agent/fyagent' && github.ref == 'refs/heads/main'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            architecture: x64
+          - runner: windows-11-vs2026-arm
+            architecture: arm64
+    env:
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      ARCHITECTURE: ${{ matrix.architecture }}
+    steps:
+      - name: Admit the exact native build attempt
+        id: source
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($env:SOURCE_RUN_ID -cnotmatch '^[1-9][0-9]{0,18}$' -or
+              $env:SOURCE_RUN_ATTEMPT -cnotmatch '^[1-9][0-9]{0,8}$' -or
+              $env:SOURCE_SHA -cnotmatch '^[0-9a-f]{40}$') {
+            throw 'Release run, attempt, and source SHA must be exact.'
+          }
+
+          $runEndpoint = "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN_ID"
+          $run = gh api $runEndpoint | ConvertFrom-Json
+          if ([string]$run.id -cne $env:SOURCE_RUN_ID -or
+              [string]$run.run_attempt -cne $env:SOURCE_RUN_ATTEMPT -or
+              [string]$run.repository.id -cne $env:GITHUB_REPOSITORY_ID -or
+              [string]$run.head_repository.id -cne $env:GITHUB_REPOSITORY_ID -or
+              $run.path -cne '.github/workflows/release.yml' -or
+              $run.event -cne 'workflow_dispatch' -or
+              $run.head_branch -cne 'main' -or
+              $run.head_sha -cne $env:SOURCE_SHA) {
+            throw 'The requested attempt is not an exact default-branch Release dispatch.'
+          }
+
+          $attempt = gh api "$runEndpoint/attempts/$env:SOURCE_RUN_ATTEMPT/jobs?per_page=100" |
+            ConvertFrom-Json
+          $jobs = @($attempt.jobs | Where-Object {
+            $_.name -ceq "Windows $env:ARCHITECTURE NSIS installer"
+          })
+          if ($jobs.Count -ne 1 -or
+              [string]$jobs[0].run_attempt -cne $env:SOURCE_RUN_ATTEMPT -or
+              $jobs[0].head_sha -cne $env:SOURCE_SHA -or
+              $jobs[0].status -cne 'completed' -or
+              $jobs[0].conclusion -cne 'success') {
+            throw 'The exact matching Windows build has not succeeded.'
+          }
+          $job = $jobs[0]
+
+          $response = gh api "$runEndpoint/artifacts?per_page=100" | ConvertFrom-Json
+          $artifactNames = @{
+            raw = "raw-windows-$env:ARCHITECTURE"
+            metadata = "metadata-windows-$env:ARCHITECTURE"
+          }
+          foreach ($key in @('raw', 'metadata')) {
+            $matches = @($response.artifacts | Where-Object { $_.name -ceq $artifactNames[$key] })
+            if ($matches.Count -ne 1) {
+              throw "Missing or ambiguous Release artifact: $($artifactNames[$key])"
+            }
+            $artifact = $matches[0]
+            if ([string]$artifact.id -cnotmatch '^[1-9][0-9]{0,18}$' -or
+                $artifact.expired -ne $false -or
+                $artifact.digest -cnotmatch '^sha256:[0-9a-f]{64}$' -or
+                [string]$artifact.workflow_run.id -cne $env:SOURCE_RUN_ID -or
+                [string]$artifact.workflow_run.repository_id -cne $env:GITHUB_REPOSITORY_ID -or
+                [string]$artifact.workflow_run.head_repository_id -cne $env:GITHUB_REPOSITORY_ID -or
+                $artifact.workflow_run.head_branch -cne 'main' -or
+                $artifact.workflow_run.head_sha -cne $env:SOURCE_SHA -or
+                [DateTimeOffset]$artifact.created_at -lt [DateTimeOffset]$job.started_at -or
+                [DateTimeOffset]$artifact.created_at -gt [DateTimeOffset]$job.completed_at) {
+              throw "Release artifact is not from this native build attempt: $($artifactNames[$key])"
+            }
+            "${key}_id=$($artifact.id)" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Checkout exact source and lifecycle harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.source_sha }}
+
+      - name: Set up the release Node.js version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Download immutable unsigned installer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.source.outputs.raw_id }}
+          digest-mismatch: error
+          path: lifecycle-inputs/installer
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download immutable platform evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.source.outputs.metadata_id }}
+          digest-mismatch: error
+          path: lifecycle-inputs/metadata
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify artifact and run the silent native lifecycle
+        shell: pwsh
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          RAW_ARTIFACT_ID: ${{ steps.source.outputs.raw_id }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $expectedRunnerArch = $env:ARCHITECTURE.ToUpperInvariant()
+          if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
+              $env:RUNNER_ARCH -cne $expectedRunnerArch -or
+              (git rev-parse HEAD) -cne $env:SOURCE_SHA) {
+            throw 'Lifecycle requires a clean matching GitHub-hosted Windows runner and the exact source.'
+          }
+
+          $version = node scripts/version.mjs get
+          if ($version -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+            throw 'The source version must be stable.'
+          }
+          $target = "windows-$env:ARCHITECTURE"
+          $installerName = "FyAgent-$version-Windows-$env:ARCHITECTURE-setup.exe"
+          $installer = @(Get-ChildItem -LiteralPath lifecycle-inputs/installer -Force)
+          $metadataFile = @(Get-ChildItem -LiteralPath lifecycle-inputs/metadata -Force)
+          if ($installer.Count -ne 1 -or $installer[0].Name -cne $installerName -or
+              $metadataFile.Count -ne 1 -or $metadataFile[0].Name -cne "$target.json") {
+            throw 'Expected exactly one named installer and platform metadata file.'
+          }
+          foreach ($file in @($installer[0], $metadataFile[0])) {
+            if ($file -isnot [IO.FileInfo] -or $file.Length -le 0 -or
+                ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+              throw 'Installer and metadata must be non-empty regular files.'
+            }
+          }
+
+          $metadata = Get-Content -LiteralPath $metadataFile[0].FullName -Raw | ConvertFrom-Json
+          $identity = $metadata.identity
+          if ($metadata.schema -cne 'fyagent-platform-build/v3' -or
+              $metadata.targetGroup -cne $target -or
+              $metadata.platform -cne 'windows' -or
+              $metadata.architecture -cne $env:ARCHITECTURE -or
+              $metadata.runner.context.os -cne 'Windows' -or
+              $metadata.runner.context.arch -cne $expectedRunnerArch -or
+              $identity.repository -cne $env:GITHUB_REPOSITORY -or
+              [string]$identity.repositoryId -cne $env:GITHUB_REPOSITORY_ID -or
+              $identity.workflowPath -cne '.github/workflows/release.yml' -or
+              $identity.workflowRef -cne "$env:GITHUB_REPOSITORY/.github/workflows/release.yml@refs/heads/main" -or
+              $identity.workflowSha -cne $env:SOURCE_SHA -or
+              $identity.sourceSha -cne $env:SOURCE_SHA -or
+              [string]$identity.runId -cne $env:SOURCE_RUN_ID -or
+              [string]$identity.runAttempt -cne $env:SOURCE_RUN_ATTEMPT -or
+              $identity.event -cne 'workflow_dispatch' -or
+              $identity.mode -cne 'preflight' -or
+              $identity.productVersion -cne $version) {
+            throw 'Platform metadata does not bind these inputs to the requested preflight.'
+          }
+
+          New-Item -ItemType Directory -Force lifecycle-evidence | Out-Null
+          $env:FYAGENT_WINDOWS_SIGNING_MODE = 'unsigned'
+          node scripts/release/windows-signing.mjs asset `
+            --asset $installer[0].FullName `
+            --architecture $env:ARCHITECTURE `
+            --version $version `
+            --source-sha $env:SOURCE_SHA `
+            --output lifecycle-evidence/unsigned-installer.json
+          @(
+            "Release run $env:SOURCE_RUN_ID attempt $env:SOURCE_RUN_ATTEMPT"
+            "Source SHA $env:SOURCE_SHA"
+            "Raw archive artifact ID $env:RAW_ARTIFACT_ID"
+            "Installer $installerName"
+            "Runner $env:RUNNER_OS $env:RUNNER_ARCH ($env:RUNNER_ENVIRONMENT)"
+          ) | Tee-Object -FilePath lifecycle-evidence/lifecycle.log
+          ./scripts/release/verify-windows-nsis-lifecycle.ps1 `
+            -InstallerPath $installer[0].FullName `
+            -Architecture $env:ARCHITECTURE `
+            -AppVersion $version *>&1 |
+            Tee-Object -FilePath lifecycle-evidence/lifecycle.log -Append
+
+      - name: Upload native lifecycle evidence
+        if: ${{ !cancelled() && hashFiles('lifecycle-evidence/*') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-lifecycle-${{ matrix.architecture }}
+          path: lifecycle-evidence/*
+          if-no-files-found: error
+          retention-days: 7

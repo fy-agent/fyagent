@@ -160,7 +160,10 @@ export function verifySealedWindowsCandidate(
     expectedCertificateSha256?: string;
   },
   dependencies?: {
-    probeAuthenticode?: (assetPath: string) => RawAuthenticodeEvidence;
+    probeAuthenticode?: (
+      assetPath: string,
+      options?: { requireSignTool: boolean },
+    ) => RawAuthenticodeEvidence;
     resolveRegularFile?: (filePath: string, label: string) => string;
   },
 ): WindowsSigningAssetRecord;

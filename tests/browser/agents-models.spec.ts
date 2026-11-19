@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test, type Locator } from "@playwright/test";
 
 import {
@@ -351,7 +352,7 @@ test("Agent catalog failure stays explicit and never falls back to a static supp
   await expectHealthyPage(page, health);
 });
 
-test("Models keeps seven targets and saves TRAE models natively", async ({
+test("Models keeps eight targets and reads TRAE model IDs natively", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page);
@@ -371,31 +372,43 @@ test("Models keeps seven targets and saves TRAE models natively", async ({
   ).toEqual([...modelTargetOrder]);
   const targetIcons = targetButtons.locator("img");
   await expect(targetIcons).toHaveCount(8);
-  expect(
-    await targetIcons.evaluateAll((elements) =>
-      elements.map((element) => ({
-        source: (element as HTMLImageElement).src.startsWith(
-          "data:image/svg+xml",
-        )
-          ? "inline-svg"
-          : new URL((element as HTMLImageElement).src).pathname
-              .split("/")
-              .at(-1),
-        alt: element.getAttribute("alt"),
-        ariaHidden: element.getAttribute("aria-hidden"),
-        local:
-          (element as HTMLImageElement).src.startsWith("data:image/svg+xml") ||
-          new URL((element as HTMLImageElement).src).origin === location.origin,
-      })),
-    ),
-  ).toEqual(
-    modelTargetIconSources.map((source) => ({
-      source,
-      alt: "",
-      ariaHidden: "true",
-      local: true,
+  const icons = await targetIcons.evaluateAll((elements) =>
+    elements.map((element) => ({
+      src: (element as HTMLImageElement).src,
+      alt: element.getAttribute("alt"),
+      ariaHidden: element.getAttribute("aria-hidden"),
     })),
   );
+  const origin = new URL(page.url()).origin;
+  for (const [index, expectedSource] of modelTargetIconSources.entries()) {
+    const { src, alt, ariaHidden } = icons[index];
+    expect(alt).toBe("");
+    expect(ariaHidden).toBe("true");
+    if (expectedSource === "inline-svg") {
+      expect(src).toMatch(/^data:image\/svg\+xml[,;]/);
+      continue;
+    }
+
+    const originalPng = readFileSync(
+      new URL(
+        `../../src/shared/assets/agents/${expectedSource}`,
+        import.meta.url,
+      ),
+    );
+    if (src.startsWith("data:")) {
+      expect(src).toBe(
+        `data:image/png;base64,${originalPng.toString("base64")}`,
+      );
+      continue;
+    }
+
+    expect(new URL(src).origin).toBe(origin);
+    const response = await page.request.get(src);
+    await expect(response).toBeOK();
+    expect((await response.body()).equals(originalPng), expectedSource).toBe(
+      true,
+    );
+  }
   await expect(page.getByTestId("model-target-claude")).toHaveAttribute(
     "aria-current",
     "true",

@@ -11,16 +11,17 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: preflight from trusted main, formal retry at an existing tag ref, or the narrow v0.4.15 formal repair from main
+        description: preflight, signed preflight from protected main, formal retry at an existing tag, or narrow v0.4.15 repair
         required: true
         default: preflight
         type: choice
         options:
           - preflight
+          - signed-preflight
           - formal
           - formal-repair
       source_sha:
-        description: Immutable 40-character candidate commit. Required for preflight and formal-repair. Leave empty for tag formal.
+        description: Immutable 40-character candidate commit. Required for preflight, signed-preflight and formal-repair. Leave empty for tag formal.
         required: false
         type: string
       release_tag:
@@ -53,6 +54,7 @@ jobs:
       workflow_sha: ${{ steps.contract.outputs.workflow_sha }}
       release_mode: ${{ steps.contract.outputs.release_mode }}
       repair: ${{ steps.contract.outputs.repair }}
+      windows_signing_rehearsal: ${{ steps.contract.outputs.windows_signing_rehearsal }}
       windows_byte_source: ${{ steps.contract.outputs.windows_byte_source }}
       generated_at: ${{ steps.contract.outputs.generated_at }}
       ci_run_id: ${{ steps.remote.outputs.ci_run_id }}
@@ -78,7 +80,7 @@ jobs:
           case "$GITHUB_EVENT_NAME" in
             workflow_dispatch)
               case "$DISPATCH_MODE" in
-                preflight)
+                preflight|signed-preflight)
                   [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
                     echo 'workflow_dispatch preflight source_sha must be a lowercase full 40-character commit SHA' >&2
                     exit 1
@@ -95,6 +97,12 @@ jobs:
                   [ "$GITHUB_REF_TYPE" = 'branch' ]
                   [ "$GITHUB_REF_NAME" = 'main' ]
                   [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ]
+                  if [ "$DISPATCH_MODE" = 'signed-preflight' ]; then
+                    [ "$GITHUB_REF_PROTECTED" = 'true' ] && [ "$DISPATCH_SOURCE_SHA" = "$GITHUB_WORKFLOW_SHA" ] || {
+                      echo 'Signed preflight requires the exact protected main workflow commit' >&2
+                      exit 1
+                    }
+                  fi
                   requested_source_sha="$DISPATCH_SOURCE_SHA"
                   requested_mode='preflight'
                   requested_repair='false'
@@ -251,7 +259,7 @@ jobs:
           case "$GITHUB_EVENT_NAME" in
             workflow_dispatch)
               case "$DISPATCH_MODE" in
-                preflight)
+                preflight|signed-preflight)
                   [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
                     echo 'workflow_dispatch preflight source_sha must be a lowercase full 40-character commit SHA' >&2
                     exit 1
@@ -276,6 +284,12 @@ jobs:
                     echo 'workflow_dispatch preflight release_tag must be empty' >&2
                     exit 1
                   }
+                  if [ "$DISPATCH_MODE" = 'signed-preflight' ]; then
+                    [ "$GITHUB_REF_PROTECTED" = 'true' ] && [ "$source_sha" = "$workflow_commit" ] || {
+                      echo 'Signed preflight source must match the protected main checkout' >&2
+                      exit 1
+                    }
+                  fi
                   release_mode='preflight'
                   repair='false'
                   ;;
@@ -413,6 +427,11 @@ jobs:
             printf 'source_sha=%s\n' "$source_sha"
             printf 'workflow_sha=%s\n' "$workflow_commit"
             printf 'release_mode=%s\n' "$release_mode"
+            if [ "$DISPATCH_MODE" = 'signed-preflight' ]; then
+              printf 'windows_signing_rehearsal=true\n'
+            else
+              printf 'windows_signing_rehearsal=false\n'
+            fi
             printf 'repair=%s\n' "$repair"
             printf 'generated_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
           } >> "$GITHUB_OUTPUT"
@@ -425,7 +444,7 @@ jobs:
           RELEASE_APP_VERSION: ${{ steps.contract.outputs.app_version }}
           RELEASE_TAG: ${{ steps.contract.outputs.release_tag }}
           RELEASE_SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
-          RELEASE_DISPATCH_MODE: ${{ inputs.mode }}
+          RELEASE_DISPATCH_MODE: ${{ inputs.mode == 'signed-preflight' && 'preflight' || inputs.mode }}
           RELEASE_DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
@@ -733,7 +752,7 @@ jobs:
 
   prove-windows-preflight:
     name: Windows ${{ matrix.architecture }} unsigned preflight sealing
-    if: needs.eligibility.outputs.release_mode == 'preflight' && github.event_name == 'workflow_dispatch'
+    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal != 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && github.event_name == 'workflow_dispatch' }}"
     needs: [eligibility, pin-release-build-inputs]
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -886,20 +905,19 @@ jobs:
 
   sign-windows-formal:
     name: Windows ${{ matrix.architecture }} formal signing
-    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
+    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal == 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild')) }}"
     needs: [eligibility, pin-release-build-inputs]
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ (needs.eligibility.outputs.windows_signing_rehearsal == 'true' || vars.FYAGENT_WINDOWS_SIGNING_MODE == 'provider') && 'fyagent-simplysign' || 'windows-2025' }}
+    timeout-minutes: 15
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: fyagent-simplysign
-            target_group: windows-x64
+          - target_group: windows-x64
             architecture: x64
-          - runner: fyagent-simplysign
-            target_group: windows-arm64
+          - target_group: windows-arm64
             architecture: arm64
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
@@ -916,12 +934,15 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - name: Verify clean native signing runner
+      - name: Verify authorized Windows signing runner
         shell: pwsh
+        env:
+          EXPECTED_RUNNER_ENVIRONMENT: ${{ (needs.eligibility.outputs.windows_signing_rehearsal == 'true' || vars.FYAGENT_WINDOWS_SIGNING_MODE == 'provider') && 'self-hosted' || 'github-hosted' }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64') {
-            throw "Windows signing runner $env:RUNNER_OS/$env:RUNNER_ARCH is not the x64 SimplySign runner"
+          if ($env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or
+              $env:RUNNER_ENVIRONMENT -cne $env:EXPECTED_RUNNER_ENVIRONMENT) {
+            throw "Expected $env:EXPECTED_RUNNER_ENVIRONMENT Windows x64 signing runner, got $env:RUNNER_ENVIRONMENT $env:RUNNER_OS/$env:RUNNER_ARCH"
           }
           if ((git rev-parse HEAD) -cne $env:SOURCE_SHA) {
             throw 'Windows signing checkout is not the frozen source SHA'
@@ -992,11 +1013,12 @@ jobs:
       - name: Produce untrusted formal Windows candidate
         shell: pwsh
         env:
+          WINDOWS_SIGNING_REHEARSAL: ${{ needs.eligibility.outputs.windows_signing_rehearsal }}
           SIGNING_MODE_CONFIG: ${{ vars.FYAGENT_WINDOWS_SIGNING_MODE }}
-          SIGNER_ADAPTER_BASE64_CONFIG: ${{ secrets.FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 }}
+          SIGNER_ADAPTER_BASE64_CONFIG: ${{ needs.eligibility.outputs.windows_signing_rehearsal != 'true' && secrets.FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 || '' }}
           SIGNER_PUBLISHER_CONFIG: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER }}
           SIGNER_CERTIFICATE_CONFIG: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256 }}
-          SIGNER_CREDENTIAL_CONFIG: ${{ secrets.FYAGENT_WINDOWS_SIGNER_CREDENTIAL }}
+          SIGNER_CREDENTIAL_CONFIG: ${{ needs.eligibility.outputs.windows_signing_rehearsal != 'true' && secrets.FYAGENT_WINDOWS_SIGNER_CREDENTIAL || '' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $managedSignerEnvironment = @(
@@ -1013,6 +1035,36 @@ jobs:
             'SIGNER_CERTIFICATE_CONFIG',
             'SIGNER_CREDENTIAL_CONFIG'
           )
+          if ($env:WINDOWS_SIGNING_REHEARSAL -ceq 'true') {
+            if ($env:GITHUB_REF -cne 'refs/heads/main' -or
+                $env:GITHUB_REF_PROTECTED -cne 'true' -or
+                $env:SOURCE_SHA -cne $env:GITHUB_SHA) {
+              throw 'Signed preflight left its protected main source boundary.'
+            }
+            $policy = Get-Content -LiteralPath 'docs/release/windows-offline-signing-policy.json' -Raw | ConvertFrom-Json
+            if ($policy.schema -cne 'fyagent-windows-offline-signing-policy/v1' -or
+                [string]$policy.certificateSha256 -cnotmatch '^[0-9a-f]{64}$') {
+              throw 'Signed preflight requires a valid pinned signing policy.'
+            }
+            $certificate = @(Get-ChildItem -Path Cert:\CurrentUser\My | Where-Object {
+              $_.HasPrivateKey -and
+                $_.GetCertHashString([Security.Cryptography.HashAlgorithmName]::SHA256).ToLowerInvariant() -ceq $policy.certificateSha256
+            })
+            if ($certificate.Count -ne 1) {
+              throw 'Signed preflight requires the pinned Certum key on the dedicated signing runner.'
+            }
+            $env:SIGNING_MODE_CONFIG = 'provider'
+            $env:SIGNER_ADAPTER_BASE64_CONFIG = [Convert]::ToBase64String(
+              [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath 'scripts/release/windows-signer-certum-simplysign.ps1').Path)
+            )
+            $env:SIGNER_PUBLISHER_CONFIG = $policy.publisher
+            $env:SIGNER_CERTIFICATE_CONFIG = $policy.certificateSha256
+            $env:SIGNER_CREDENTIAL_CONFIG = @{
+              provider = 'certum-simplysign'
+              timestampUrl = 'http://time.certum.pl'
+              certificateSha1 = $certificate[0].Thumbprint.ToLowerInvariant()
+            } | ConvertTo-Json -Compress
+          }
           $providerConfig = @(
             [string]$env:SIGNER_ADAPTER_BASE64_CONFIG,
             [string]$env:SIGNER_PUBLISHER_CONFIG,
@@ -1125,7 +1177,7 @@ jobs:
 
   seal-windows-formal:
     name: Windows ${{ matrix.architecture }} fresh formal verification and sealing
-    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
+    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs['sign-windows-formal'].result == 'success' && ((needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal == 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild')) }}"
     needs: [eligibility, pin-release-build-inputs, sign-windows-formal]
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -1143,6 +1195,7 @@ jobs:
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
       SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+      WINDOWS_SIGNING_REHEARSAL: ${{ needs.eligibility.outputs.windows_signing_rehearsal }}
       PUBLIC_SIGNING_MODE: ${{ vars.FYAGENT_WINDOWS_SIGNING_MODE }}
       PUBLIC_EXPECTED_PUBLISHER: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER }}
       PUBLIC_EXPECTED_CERTIFICATE_SHA256: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256 }}
@@ -1234,6 +1287,15 @@ jobs:
             '--source-sha', $env:SOURCE_SHA,
             '--output', $env:FYAGENT_WINDOWS_SIGNING_FRAGMENT
           )
+          if ($env:WINDOWS_SIGNING_REHEARSAL -ceq 'true') {
+            $policy = Get-Content -LiteralPath 'docs/release/windows-offline-signing-policy.json' -Raw | ConvertFrom-Json
+            if ($policy.schema -cne 'fyagent-windows-offline-signing-policy/v1') {
+              throw 'Signed preflight requires the pinned signing policy.'
+            }
+            $env:PUBLIC_SIGNING_MODE = 'provider'
+            $env:PUBLIC_EXPECTED_PUBLISHER = $policy.publisher
+            $env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 = $policy.certificateSha256
+          }
           switch -CaseSensitive ([string]$env:PUBLIC_SIGNING_MODE) {
             '' {
               if ([string]$env:PUBLIC_EXPECTED_PUBLISHER -cne '' -or
@@ -1917,7 +1979,7 @@ jobs:
 
   verify-assets:
     name: Verify exact installers and generate evidence
-    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'offline-sealed' && needs['build-windows'].result == 'skipped' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'success')) }}
+    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal != 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'skipped') || ((((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal') || (github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal == 'true')) && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'offline-sealed' && needs['build-windows'].result == 'skipped' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'success')) }}
     needs:
       [
         eligibility,
@@ -1936,6 +1998,7 @@ jobs:
       SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
       TRUSTED_WORKFLOW_SHA: ${{ needs.eligibility.outputs.workflow_sha }}
       RELEASE_MODE: ${{ needs.eligibility.outputs.release_mode }}
+      WINDOWS_SIGNING_REHEARSAL: ${{ needs.eligibility.outputs.windows_signing_rehearsal }}
       GENERATED_AT: ${{ needs.eligibility.outputs.generated_at }}
       EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
       EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
@@ -2022,6 +2085,10 @@ jobs:
                 --version "$APP_VERSION" \
                 --source-sha "$SOURCE_SHA" \
                 --output verified-subjects/signing-status.json
+              if [ "$WINDOWS_SIGNING_REHEARSAL" = true ]; then
+                jq -e '.mode == "signed" and all(.assets[]; .signature.status == "Valid")' \
+                  verified-subjects/signing-status.json >/dev/null
+              fi
               node scripts/release/generate-build-metadata.mjs \
                 platform-metadata "$APP_VERSION" "$RELEASE_TAG" "$SOURCE_SHA" \
                 "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY_ID" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
