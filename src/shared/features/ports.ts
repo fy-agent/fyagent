@@ -61,6 +61,12 @@ import type {
   BatchProviderPreviewResult,
   BatchProviderApplyRequest,
   BatchProviderApplyResult,
+  ModelHealthOverview,
+  CloneModelConfigRequest,
+  ApiKeyRotationPreviewRequest,
+  ApiKeyRotationApplyRequest,
+  CustomGatewayTemplate,
+  SaveCustomGatewayTemplateRequest,
   ExternalAgentLaunchDestination,
   ExternalAgentLaunchResult,
   ExternalAgentRuntimeStatus,
@@ -192,6 +198,24 @@ export interface ProvidersPort {
   applyBatchSetup(
     request: BatchProviderApplyRequest,
   ): Promise<BatchProviderApplyResult>;
+  getModelHealthOverview(): Promise<ModelHealthOverview>;
+  previewCloneModelConfig(
+    request: CloneModelConfigRequest,
+  ): Promise<BatchProviderPreviewResult>;
+  applyCloneModelConfig(
+    request: CloneModelConfigRequest,
+  ): Promise<BatchProviderApplyResult>;
+  previewApiKeyRotation(
+    request: ApiKeyRotationPreviewRequest,
+  ): Promise<BatchProviderPreviewResult>;
+  applyApiKeyRotation(
+    request: ApiKeyRotationApplyRequest,
+  ): Promise<BatchProviderApplyResult>;
+  listCustomGatewayTemplates(): Promise<CustomGatewayTemplate[]>;
+  saveCustomGatewayTemplate(
+    request: SaveCustomGatewayTemplateRequest,
+  ): Promise<CustomGatewayTemplate>;
+  deleteCustomGatewayTemplate(id: string): Promise<boolean>;
   probeSavedModel(
     request: SavedModelProbeRequest,
   ): Promise<SavedModelProbeResult>;

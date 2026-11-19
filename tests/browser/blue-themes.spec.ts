@@ -95,6 +95,11 @@ test("dark blue text and controls remain readable on actual composited page and 
       ).toBeEnabled();
       await expect(routeScope.getByRole("progressbar")).toHaveCount(0);
     }
+    if (route === "auth") {
+      await expect(
+        routeScope.getByRole("heading", { name: "账号与认证", level: 1 }),
+      ).toBeVisible();
+    }
     if (route === "models?target=codex") {
       // Loaded mode/provider rows move the subscription section. Capture text
       // coordinates only after that query-driven layout change is complete.

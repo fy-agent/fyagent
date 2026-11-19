@@ -100,4 +100,114 @@ describe("PresetBatchDrawer", () => {
       ),
     ).toEqual(["omp"]);
   });
+
+  it("creates, selects, applies, and deletes a custom gateway template without storing API keys", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+
+    let savedTemplates: Awaited<
+      ReturnType<typeof ports.providers.listCustomGatewayTemplates>
+    > = [];
+    ports.providers.listCustomGatewayTemplates = vi.fn(
+      async () => savedTemplates,
+    );
+    ports.providers.saveCustomGatewayTemplate = vi.fn(async (req) => {
+      const saved = {
+        id: req.id ?? "custom-gw-1",
+        name: req.name.trim(),
+        summary: req.summary?.trim() || "",
+        baseUrl: req.baseUrl.trim(),
+        anthropicBaseUrl: req.anthropicBaseUrl?.trim() || null,
+        defaultModelId: req.defaultModelId.trim(),
+        codexProtocol: req.codexProtocol,
+        apiKeyUrl: req.apiKeyUrl?.trim() || null,
+        updatedAt: 1763553600000,
+      };
+      savedTemplates = [saved];
+      return saved;
+    });
+    ports.providers.deleteCustomGatewayTemplate = vi.fn(async (id) => {
+      savedTemplates = savedTemplates.filter((item) => item.id !== id);
+      return true;
+    });
+    ports.providers.previewBatchSetup = vi.fn(
+      async (req: BatchProviderPreviewRequest) => ({
+        items: req.targets.map((t) => ({
+          target: t.target,
+          paths: [`~/.config/${t.target}/config`],
+          baseUrl: t.baseUrl,
+          modelId: t.modelId,
+          ready: true,
+        })),
+      }),
+    );
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <FeatureProvider ports={ports}>
+            <PresetBatchDrawer
+              open
+              onOpenChange={vi.fn()}
+              initialTemplateDraft={{
+                name: "公司中转站",
+                baseUrl: "https://gateway.internal.example/v1",
+                defaultModelId: "gpt-5.4",
+                codexProtocol: "responses",
+              }}
+            />
+          </FeatureProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    // Editor opens automatically with seeded draft from ModelHealthDialog handoff.
+    expect(screen.getByDisplayValue("公司中转站")).toBeVisible();
+    await user.type(
+      screen.getByPlaceholderText("https://gateway.example/anthropic"),
+      "https://gateway.internal.example/anthropic",
+    );
+    await user.click(screen.getByRole("button", { name: "保存模板" }));
+
+    await waitFor(() =>
+      expect(ports.providers.saveCustomGatewayTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "公司中转站",
+          baseUrl: "https://gateway.internal.example/v1",
+          anthropicBaseUrl: "https://gateway.internal.example/anthropic",
+          defaultModelId: "gpt-5.4",
+          codexProtocol: "responses",
+        }),
+      ),
+    );
+
+    const customRadio = await screen.findByRole("radio", {
+      name: /公司中转站/,
+    });
+    expect(customRadio).toHaveAttribute("aria-checked", "true");
+
+    await user.type(
+      screen.getByPlaceholderText("粘贴 公司中转站 的 API Key"),
+      "sk-internal-live-1",
+    );
+    await user.click(screen.getByRole("button", { name: "预览改动范围" }));
+    expect(await screen.findByText("即将改动的配置文件")).toBeVisible();
+    expect(
+      screen.getAllByText("https://gateway.internal.example/anthropic").length,
+    ).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "返回修改" }));
+    await user.click(
+      screen.getByRole("button", { name: "删除模板 公司中转站" }),
+    );
+    await waitFor(() =>
+      expect(ports.providers.deleteCustomGatewayTemplate).toHaveBeenCalledWith(
+        "custom-gw-1",
+      ),
+    );
+  });
 });

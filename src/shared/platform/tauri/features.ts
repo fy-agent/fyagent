@@ -194,6 +194,22 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).providers.applyBatchSetup(...args),
       probeSavedModel: async (...args) =>
         (await models()).providers.probeSavedModel(...args),
+      getModelHealthOverview: async () =>
+        (await models()).providers.getModelHealthOverview(),
+      previewCloneModelConfig: async (...args) =>
+        (await models()).providers.previewCloneModelConfig(...args),
+      applyCloneModelConfig: async (...args) =>
+        (await models()).providers.applyCloneModelConfig(...args),
+      previewApiKeyRotation: async (...args) =>
+        (await models()).providers.previewApiKeyRotation(...args),
+      applyApiKeyRotation: async (...args) =>
+        (await models()).providers.applyApiKeyRotation(...args),
+      listCustomGatewayTemplates: async () =>
+        (await models()).providers.listCustomGatewayTemplates(),
+      saveCustomGatewayTemplate: async (...args) =>
+        (await models()).providers.saveCustomGatewayTemplate(...args),
+      deleteCustomGatewayTemplate: async (...args) =>
+        (await models()).providers.deleteCustomGatewayTemplate(...args),
       getSummary: async (...args) =>
         (await models()).providers.getSummary(...args),
       getProxyRestorePreview: async (...args) =>

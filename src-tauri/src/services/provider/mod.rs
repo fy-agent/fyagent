@@ -8,6 +8,7 @@ mod claude_editor;
 mod claude_write_projection;
 mod common_config;
 mod credentials;
+pub(crate) mod custom_templates;
 pub use claude_editor::{EditorSave, EditorView};
 pub(crate) mod codex_client_catalog;
 pub(crate) mod codex_direct;
@@ -22,6 +23,7 @@ pub(crate) mod grok_direct;
 mod grok_editor;
 mod live;
 mod managed_proxy;
+pub(crate) mod model_overview;
 mod universal;
 mod usage;
 
@@ -33,6 +35,15 @@ pub use claude_write_projection::{
     ClaudeQuickSetupApplyRequest, ClaudeQuickSetupOutcome, ClaudeQuickSetupPreview,
 };
 pub(crate) use credentials::ProviderCredentials;
+pub use custom_templates::{
+    delete_custom_gateway_template, list_custom_gateway_templates, save_custom_gateway_template,
+    CustomGatewayTemplate, SaveCustomGatewayTemplateRequest,
+};
+pub use model_overview::{
+    apply_api_key_rotation, apply_clone_model_config, get_model_health_overview,
+    preview_api_key_rotation, preview_clone_model_config, ApiKeyRotationApplyRequest,
+    ApiKeyRotationPreviewRequest, CloneModelConfigRequest, ModelHealthOverview,
+};
 
 pub use managed_proxy::{
     BindManagedProxyError, BindManagedProxyRequest, BindManagedProxyResult,

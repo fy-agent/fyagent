@@ -19,12 +19,18 @@ import type { FeaturePorts } from "../../../features/ports";
 import {
   BATCH_SETUP_TARGET_IDS,
   SAVED_MODEL_PROBE_CATEGORIES,
+  type ApiKeyRotationApplyRequest,
+  type ApiKeyRotationPreviewRequest,
   type BatchProviderApplyRequest,
   type BatchProviderApplyResult,
   type BatchProviderPreviewRequest,
   type BatchProviderPreviewResult,
+  type CloneModelConfigRequest,
+  type CustomGatewayTemplate,
   type FetchedModelList,
   type FetchedModelRef,
+  type ModelCredentialSource,
+  type ModelHealthOverview,
   type ModelProbeRequest,
   type ModelProbeResult,
   type ModelProbeSnapshot,
@@ -35,8 +41,10 @@ import {
   type ProviderQuickSetupRequest,
   type ProviderSummaryQueryData,
   type ReachabilityResult,
+  type SaveCustomGatewayTemplateRequest,
   type SavedModelProbeRequest,
   type SavedModelProbeResult,
+  type TargetModelSnapshot,
   type WorkBuddySaveModelsResult,
 } from "../../../features/types";
 import {
@@ -747,6 +755,139 @@ function assertBatchApplyRequest(
   return request;
 }
 
+const MODEL_CREDENTIAL_SOURCES = [
+  "api_key",
+  "oauth",
+  "env_or_command",
+  "none",
+] as const;
+
+function parseTargetModelSnapshot(value: unknown): TargetModelSnapshot {
+  if (
+    !isRecord(value) ||
+    !hasRequiredAndOptionalKeys(
+      value,
+      [
+        "target",
+        "configured",
+        "providerId",
+        "providerName",
+        "baseUrl",
+        "endpointHost",
+        "modelId",
+        "protocol",
+        "modelCount",
+        "credentialSource",
+        "canProbe",
+        "canCloneSource",
+        "canRotateKey",
+      ],
+      ["statusNote"],
+    ) ||
+    !isOneOf(value.target, BATCH_SETUP_TARGET_IDS) ||
+    typeof value.configured !== "boolean" ||
+    (value.providerId !== null && typeof value.providerId !== "string") ||
+    (value.providerName !== null && typeof value.providerName !== "string") ||
+    (value.baseUrl !== null && typeof value.baseUrl !== "string") ||
+    (value.endpointHost !== null && typeof value.endpointHost !== "string") ||
+    (value.modelId !== null && typeof value.modelId !== "string") ||
+    (value.protocol !== null && !isApiProtocol(value.protocol)) ||
+    typeof value.modelCount !== "number" ||
+    !isOneOf(value.credentialSource, MODEL_CREDENTIAL_SOURCES) ||
+    typeof value.canProbe !== "boolean" ||
+    typeof value.canCloneSource !== "boolean" ||
+    typeof value.canRotateKey !== "boolean" ||
+    (value.statusNote !== undefined && typeof value.statusNote !== "string")
+  ) {
+    throw new Error("Model health overview is unavailable");
+  }
+  return {
+    target: value.target,
+    configured: value.configured,
+    providerId: value.providerId,
+    providerName: value.providerName,
+    baseUrl: value.baseUrl,
+    endpointHost: value.endpointHost,
+    modelId: value.modelId,
+    protocol: value.protocol,
+    modelCount: value.modelCount,
+    credentialSource: value.credentialSource as ModelCredentialSource,
+    canProbe: value.canProbe,
+    canCloneSource: value.canCloneSource,
+    canRotateKey: value.canRotateKey,
+    ...(typeof value.statusNote === "string"
+      ? { statusNote: value.statusNote }
+      : {}),
+  };
+}
+
+function parseModelHealthOverview(value: unknown): ModelHealthOverview {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["targets"]) ||
+    !Array.isArray(value.targets)
+  ) {
+    throw new Error("Model health overview is unavailable");
+  }
+  return { targets: value.targets.map(parseTargetModelSnapshot) };
+}
+
+function parseCustomGatewayTemplate(value: unknown): CustomGatewayTemplate {
+  if (
+    !isRecord(value) ||
+    !hasRequiredAndOptionalKeys(
+      value,
+      [
+        "id",
+        "name",
+        "summary",
+        "baseUrl",
+        "defaultModelId",
+        "codexProtocol",
+        "updatedAt",
+      ],
+      ["anthropicBaseUrl", "apiKeyUrl"],
+    ) ||
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.summary !== "string" ||
+    typeof value.baseUrl !== "string" ||
+    typeof value.defaultModelId !== "string" ||
+    !isApiProtocol(value.codexProtocol) ||
+    typeof value.updatedAt !== "number" ||
+    (value.anthropicBaseUrl !== undefined &&
+      value.anthropicBaseUrl !== null &&
+      typeof value.anthropicBaseUrl !== "string") ||
+    (value.apiKeyUrl !== undefined &&
+      value.apiKeyUrl !== null &&
+      typeof value.apiKeyUrl !== "string")
+  ) {
+    throw new Error("Custom gateway template is unavailable");
+  }
+  return {
+    id: value.id,
+    name: value.name,
+    summary: value.summary,
+    baseUrl: value.baseUrl,
+    defaultModelId: value.defaultModelId,
+    codexProtocol: value.codexProtocol,
+    updatedAt: value.updatedAt,
+    ...(typeof value.anthropicBaseUrl === "string"
+      ? { anthropicBaseUrl: value.anthropicBaseUrl }
+      : {}),
+    ...(typeof value.apiKeyUrl === "string"
+      ? { apiKeyUrl: value.apiKeyUrl }
+      : {}),
+  };
+}
+
+function parseCustomGatewayTemplates(value: unknown): CustomGatewayTemplate[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Custom gateway templates are unavailable");
+  }
+  return value.map(parseCustomGatewayTemplate);
+}
+
 function parseBatchPreviewResult(value: unknown): BatchProviderPreviewResult {
   if (
     !isRecord(value) ||
@@ -907,6 +1048,45 @@ export function createModelFeaturePorts(): Pick<
             request: assertBatchApplyRequest(request),
           }),
         ),
+      getModelHealthOverview: async () =>
+        parseModelHealthOverview(
+          await invoke<unknown>("get_model_health_overview"),
+        ),
+      previewCloneModelConfig: async (request: CloneModelConfigRequest) =>
+        parseBatchPreviewResult(
+          await invoke<unknown>("preview_clone_model_config", { request }),
+        ),
+      applyCloneModelConfig: async (request: CloneModelConfigRequest) =>
+        parseBatchApplyResult(
+          await invoke<unknown>("apply_clone_model_config", { request }),
+        ),
+      previewApiKeyRotation: async (request: ApiKeyRotationPreviewRequest) =>
+        parseBatchPreviewResult(
+          await invoke<unknown>("preview_api_key_rotation", { request }),
+        ),
+      applyApiKeyRotation: async (request: ApiKeyRotationApplyRequest) =>
+        parseBatchApplyResult(
+          await invoke<unknown>("apply_api_key_rotation", { request }),
+        ),
+      listCustomGatewayTemplates: async () =>
+        parseCustomGatewayTemplates(
+          await invoke<unknown>("list_custom_gateway_templates"),
+        ),
+      saveCustomGatewayTemplate: async (
+        request: SaveCustomGatewayTemplateRequest,
+      ) =>
+        parseCustomGatewayTemplate(
+          await invoke<unknown>("save_custom_gateway_template", { request }),
+        ),
+      deleteCustomGatewayTemplate: async (id: string) => {
+        const result = await invoke<unknown>("delete_custom_gateway_template", {
+          id,
+        });
+        if (typeof result !== "boolean") {
+          throw new Error("Delete custom gateway template result is invalid");
+        }
+        return result;
+      },
       probeSavedModel: async (request: SavedModelProbeRequest) =>
         parseSavedModelProbeResult(
           await invoke<unknown>("probe_saved_model", {

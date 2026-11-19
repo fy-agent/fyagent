@@ -946,3 +946,44 @@ test("Provider atomic failure reports rollback instead of a partial result", asy
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
   await expectHealthyPage(page, health);
 });
+
+test("Models health overview probes configured clients and saves a reusable custom gateway template", async ({
+  page,
+}) => {
+  await installRichTauriFeatureFixture(page);
+  const health = monitorPageHealth(page);
+  await openRendererPage(page, "/models?target=codex");
+
+  await page.getByRole("button", { name: "全端体检与克隆" }).click();
+  const healthDialog = page.getByRole("dialog", { name: "全端模型健康体检" });
+  await expect(healthDialog).toBeVisible();
+  await expect(healthDialog).toHaveAttribute("data-motion-settled", "true");
+  await expect(healthDialog.getByTestId("health-row-codex")).toBeVisible();
+  await expect(healthDialog.getByTestId("health-row-omp")).toBeVisible();
+
+  await healthDialog.getByRole("button", { name: "一键全端测速 (2)" }).click();
+  await expect(
+    healthDialog.getByTestId("health-row-codex").getByText("可用 · 120 ms"),
+  ).toBeVisible();
+
+  await healthDialog
+    .getByTestId("health-row-codex")
+    .getByRole("button", { name: "存为模板" })
+    .click();
+
+  const batchDialog = page.getByRole("dialog", { name: "一键配置主流大模型" });
+  await expect(batchDialog).toBeVisible();
+  await expect(batchDialog).toHaveAttribute("data-motion-settled", "true");
+  await expect(batchDialog.getByLabel("模板名称")).toHaveValue("DeepSeek");
+  await batchDialog.getByLabel("模板名称").fill("团队内部中转站");
+  await expect(batchDialog.getByLabel("模板名称")).toHaveValue("团队内部中转站");
+  await batchDialog.getByRole("button", { name: "保存模板" }).click();
+
+  await expect(
+    batchDialog.getByRole("radio", { name: /团队内部中转站/ }),
+  ).toBeVisible();
+  await batchDialog.getByRole("button", { name: "关闭" }).click();
+
+  await expectNoHorizontalOverflow(page);
+  await expectHealthyPage(page, health);
+});

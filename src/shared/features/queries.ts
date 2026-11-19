@@ -63,6 +63,12 @@ export const featureKeys = {
   openCodeModelSnapshot: [scope, "opencode", "model-snapshot"] as const,
   ompConfig: [scope, "omp", "config"] as const,
   ompCliDiscovery: [scope, "omp", "cli-discovery"] as const,
+  modelHealthOverview: [scope, "models", "health-overview"] as const,
+  customGatewayTemplates: [
+    scope,
+    "models",
+    "custom-gateway-templates",
+  ] as const,
   skills: [scope, "skills", "installed"] as const,
   skillBackups: [scope, "skills", "backups"] as const,
   skillDiscovery: [scope, "skills", "discovery"] as const,

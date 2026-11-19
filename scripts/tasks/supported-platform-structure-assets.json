@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "784651ffcb2c1d0ee7ee720cc64542b548bd3053628edb064ea28643efd9f3b9"
+      "fd568a8ea0432afbdcba1c6edc117dff7296b24720f8fc1c47c4d22ec1a6230d"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -335,7 +335,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "f6ec17029bdd764e40ad15dbd49a4ac51fc3c04b9f56dc5d5585fefa8e4cc063"
+      "b93c0bcab333461ae0211db0ef8bf69ab991cba075d90e236991856b6687e71c"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",
