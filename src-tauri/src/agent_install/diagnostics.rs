@@ -16,19 +16,21 @@ pub(crate) struct InstallDiagnostic {
     pub message_key: String,
     pub target: String,
     pub os_error: String,
+    pub http_status: Option<u16>,
     pub detail: String,
 }
 
 impl InstallDiagnostic {
     pub(crate) fn format_line(&self) -> String {
         format!(
-            "agent_install_diagnostic agent={} code={} message_key={} job_stage={} target={} os_error={} detail={}",
+            "agent_install_diagnostic agent={} code={} message_key={} job_stage={} target={} os_error={} http_status={} detail={}",
             wire_token(serde_token(self.agent), "unknown"),
             wire_token(&self.code, "Unknown"),
             wire_token(&self.message_key, "agentInstall.error.unknown"),
             wire_token(serde_token(self.job_stage), "failed"),
             field(&self.target),
             field(&self.os_error),
+            self.http_status.map_or_else(|| "-".to_string(), |status| status.to_string()),
             field(&self.detail),
         )
     }
@@ -55,6 +57,7 @@ pub(crate) fn diagnostic_from_installer(
             .details
             .platform_error_code
             .unwrap_or_else(|| "-".to_string()),
+        http_status: dto.details.http_status,
         detail: dto
             .details
             .redacted_message
@@ -80,6 +83,7 @@ pub(crate) fn diagnostic_from_reason(
             .map(redact_diagnostic_text)
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "-".to_string()),
+        http_status: None,
         detail: detail
             .map(redact_diagnostic_text)
             .filter(|value| !value.is_empty())

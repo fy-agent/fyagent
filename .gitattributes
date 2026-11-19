@@ -34,6 +34,9 @@ mise.lock text eol=lf
 *.nsi text eol=lf
 *.nsh text eol=lf
 
+# The governance scanner admits this test fixture by exact bytes.
+/src-tauri/src/services/skill/update/fixtures/server-key.pem text eol=lf
+
 # Denote all files that are truly binary and should not be modified.
 *.png binary
 *.jpg binary
