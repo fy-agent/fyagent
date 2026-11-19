@@ -37,11 +37,18 @@ import { TraeModelsPanel } from "./TraeModelsPanel";
 import { WorkBuddyPanel } from "./WorkBuddyPanel";
 import { ConfigPackButton } from "../../shared/features/config-pack-ui/ConfigPackButton";
 import type { PortableProvider } from "../../domain/config-pack";
+import type { SaveCustomGatewayTemplateRequest } from "../../domain/configuration/presets/desktopPresetTemplates";
 import "./Page.css";
 
 const PresetBatchDrawer = lazy(() =>
   import("./PresetBatchDrawer").then((mod) => ({
     default: mod.PresetBatchDrawer,
+  })),
+);
+
+const ModelHealthDialog = lazy(() =>
+  import("./ModelHealthDialog").then((mod) => ({
+    default: mod.ModelHealthDialog,
   })),
 );
 
@@ -136,7 +143,13 @@ export function ModelsPage() {
     Partial<Record<ProviderAppId | "opencode", boolean>>
   >({});
   const [batchDrawerOpen, setBatchDrawerOpen] = useState(false);
+  const [batchDrawerSeed, setBatchDrawerSeed] = useState<{
+    key: number;
+    draft: Partial<SaveCustomGatewayTemplateRequest> | null;
+  }>({ key: 0, draft: null });
   const batchButtonOriginRef = useRef<HTMLElement | null>(null);
+  const [healthDialogOpen, setHealthDialogOpen] = useState(false);
+  const healthButtonOriginRef = useRef<HTMLElement | null>(null);
   const [importedForm, setImportedForm] = useState<{
     app: "claude" | "codex";
     sequence: number;
@@ -189,10 +202,22 @@ export function ModelsPage() {
             className="fy-control-button-primary"
             onClick={(e) => {
               batchButtonOriginRef.current = e.currentTarget;
+              setBatchDrawerSeed((prev) => ({
+                key: prev.key + 1,
+                draft: null,
+              }));
               setBatchDrawerOpen(true);
             }}
           >
             一键配置主流大模型
+          </Button>
+          <Button
+            onClick={(e) => {
+              healthButtonOriginRef.current = e.currentTarget;
+              setHealthDialogOpen(true);
+            }}
+          >
+            全端体检与克隆
           </Button>
           <ConfigPackButton onFillModelForm={fillImportedForm} />
         </div>
@@ -200,9 +225,24 @@ export function ModelsPage() {
       {batchDrawerOpen ? (
         <Suspense fallback={null}>
           <PresetBatchDrawer
+            key={batchDrawerSeed.key}
             open={batchDrawerOpen}
             originRef={batchButtonOriginRef}
             onOpenChange={setBatchDrawerOpen}
+            initialTemplateDraft={batchDrawerSeed.draft}
+          />
+        </Suspense>
+      ) : null}
+      {healthDialogOpen ? (
+        <Suspense fallback={null}>
+          <ModelHealthDialog
+            open={healthDialogOpen}
+            originRef={healthButtonOriginRef}
+            onOpenChange={setHealthDialogOpen}
+            onSaveAsTemplate={(draft) => {
+              setBatchDrawerSeed((prev) => ({ key: prev.key + 1, draft }));
+              setBatchDrawerOpen(true);
+            }}
           />
         </Suspense>
       ) : null}

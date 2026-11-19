@@ -124,7 +124,7 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(171);
+    expect(renderer.commands.size).toBe(179);
     for (const command of [
       "get_global_proxy_config",
       "update_global_proxy_config",
@@ -147,6 +147,14 @@ describe("Native ACL contract", () => {
       "apply_omp_save",
       "preview_batch_provider_setup",
       "apply_batch_provider_setup",
+      "get_model_health_overview",
+      "preview_clone_model_config",
+      "apply_clone_model_config",
+      "preview_api_key_rotation",
+      "apply_api_key_rotation",
+      "list_custom_gateway_templates",
+      "save_custom_gateway_template",
+      "delete_custom_gateway_template",
       "probe_saved_model",
     ]) {
       expect(renderer.commands.has(command)).toBe(true);

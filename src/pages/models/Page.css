@@ -806,3 +806,145 @@
   align-items: center;
   gap: 8px;
 }
+
+.fy-preset-batch-header-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-custom-template-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.fy-custom-template-heading {
+  font-size: 12px;
+  color: var(--fy-text-secondary);
+}
+
+.fy-custom-template-editor {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-item);
+  background: var(--fy-surface-inset);
+}
+
+.fy-custom-template-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.fy-custom-template-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fy-custom-template-card-wrap {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-item);
+  background: var(--fy-surface-soft);
+}
+
+.fy-custom-template-card-wrap[data-selected="true"] {
+  border-color: var(--fy-selected-border);
+  background: var(--fy-selected-bg);
+  box-shadow: var(--fy-selected-shadow);
+}
+
+.fy-custom-template-select {
+  display: grid;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fy-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fy-custom-template-select strong {
+  font-size: 13px;
+}
+
+.fy-custom-template-select span {
+  font-size: 11px;
+  color: var(--fy-text-secondary);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.fy-custom-template-card-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.fy-model-health-body {
+  display: grid;
+  gap: 12px;
+}
+
+.fy-model-health-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fy-model-health-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-item);
+  background: var(--fy-surface-soft);
+}
+
+.fy-model-health-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.fy-model-health-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.fy-model-health-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fy-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.fy-model-health-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fy-model-health-overrides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}

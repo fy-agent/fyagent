@@ -764,6 +764,124 @@ pub async fn apply_batch_provider_setup(
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+pub async fn get_model_health_overview(
+    app_handle: tauri::AppHandle,
+) -> Result<crate::services::provider::ModelHealthOverview, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态尚未就绪".to_string())?;
+        crate::services::provider::get_model_health_overview(state.inner())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn preview_clone_model_config(
+    app_handle: tauri::AppHandle,
+    request: crate::services::provider::CloneModelConfigRequest,
+) -> Result<crate::services::provider::BatchProviderPreviewResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态尚未就绪".to_string())?;
+        crate::services::provider::preview_clone_model_config(state.inner(), request)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn apply_clone_model_config(
+    app_handle: tauri::AppHandle,
+    request: crate::services::provider::CloneModelConfigRequest,
+) -> Result<crate::services::provider::BatchProviderApplyResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态尚未就绪".to_string())?;
+        crate::services::provider::apply_clone_model_config(state.inner(), request)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn preview_api_key_rotation(
+    app_handle: tauri::AppHandle,
+    request: crate::services::provider::ApiKeyRotationPreviewRequest,
+) -> Result<crate::services::provider::BatchProviderPreviewResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态尚未就绪".to_string())?;
+        crate::services::provider::preview_api_key_rotation(state.inner(), request)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn apply_api_key_rotation(
+    app_handle: tauri::AppHandle,
+    request: crate::services::provider::ApiKeyRotationApplyRequest,
+) -> Result<crate::services::provider::BatchProviderApplyResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态尚未就绪".to_string())?;
+        crate::services::provider::apply_api_key_rotation(state.inner(), request)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn list_custom_gateway_templates(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<crate::services::provider::CustomGatewayTemplate>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态尚未就绪".to_string())?;
+        crate::services::provider::list_custom_gateway_templates(state.db.as_ref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn save_custom_gateway_template(
+    app_handle: tauri::AppHandle,
+    request: crate::services::provider::SaveCustomGatewayTemplateRequest,
+) -> Result<crate::services::provider::CustomGatewayTemplate, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态尚未就绪".to_string())?;
+        crate::services::provider::save_custom_gateway_template(state.db.as_ref(), request)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn delete_custom_gateway_template(
+    app_handle: tauri::AppHandle,
+    id: String,
+) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态尚未就绪".to_string())?;
+        crate::services::provider::delete_custom_gateway_template(state.db.as_ref(), &id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Claude-specific read-only consent; secrets and file authority stay native.
 #[tauri::command]
 pub async fn preview_claude_quick_setup(

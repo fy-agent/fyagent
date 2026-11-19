@@ -8,12 +8,16 @@ import {
   BATCH_SETUP_TARGET_IDS,
   type BatchSetupTargetId,
   type BatchSetupTargetSpec,
+  type CustomGatewayTemplate,
+  type SaveCustomGatewayTemplateRequest,
 } from "../../domain/configuration/presets/desktopPresetTemplates";
 
 export {
   BATCH_SETUP_TARGET_IDS,
   type BatchSetupTargetId,
   type BatchSetupTargetSpec,
+  type CustomGatewayTemplate,
+  type SaveCustomGatewayTemplateRequest,
 };
 
 export type ProviderAppId = ApiConfigTarget;
@@ -378,4 +382,47 @@ export interface SavedModelProbeResult {
   latencyMs: number | null;
   httpStatus: number | null;
   message: string;
+}
+
+export type ModelCredentialSource =
+  | "api_key"
+  | "oauth"
+  | "env_or_command"
+  | "none";
+
+export interface TargetModelSnapshot {
+  target: BatchSetupTargetId;
+  configured: boolean;
+  providerId: string | null;
+  providerName: string | null;
+  baseUrl: string | null;
+  endpointHost: string | null;
+  modelId: string | null;
+  protocol: ApiProtocol | null;
+  modelCount: number;
+  credentialSource: ModelCredentialSource;
+  canProbe: boolean;
+  canCloneSource: boolean;
+  canRotateKey: boolean;
+  statusNote?: string;
+}
+
+export interface ModelHealthOverview {
+  targets: TargetModelSnapshot[];
+}
+
+export interface CloneModelConfigRequest {
+  sourceTarget: BatchSetupTargetId;
+  destinationTargets: BatchSetupTargetId[];
+  modelIdOverride?: string;
+  baseUrlOverrides?: Partial<Record<BatchSetupTargetId, string>>;
+}
+
+export interface ApiKeyRotationPreviewRequest {
+  targets: BatchSetupTargetId[];
+}
+
+export interface ApiKeyRotationApplyRequest {
+  apiKey: string;
+  targets: BatchSetupTargetId[];
 }

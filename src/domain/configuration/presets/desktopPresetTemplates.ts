@@ -20,6 +20,29 @@ export interface BatchSetupTargetSpec {
   protocol?: ApiProtocol;
 }
 
+export interface CustomGatewayTemplate {
+  id: string;
+  name: string;
+  summary: string;
+  baseUrl: string;
+  anthropicBaseUrl?: string;
+  defaultModelId: string;
+  codexProtocol: ApiProtocol;
+  apiKeyUrl?: string;
+  updatedAt: number;
+}
+
+export interface SaveCustomGatewayTemplateRequest {
+  id?: string;
+  name: string;
+  summary?: string;
+  baseUrl: string;
+  anthropicBaseUrl?: string;
+  defaultModelId: string;
+  codexProtocol?: ApiProtocol;
+  apiKeyUrl?: string;
+}
+
 export interface DesktopPresetTargetMapping {
   baseUrl: string;
   modelId: string;
@@ -357,6 +380,51 @@ export const DESKTOP_PRESET_TEMPLATES: readonly DesktopPresetTemplate[] = [
     },
   },
 ];
+
+export function customGatewayToDesktopPreset(
+  template: CustomGatewayTemplate,
+): DesktopPresetTemplate {
+  const codexProtocol: ApiProtocol =
+    template.codexProtocol === "chat" ? "chat" : "responses";
+  return {
+    id: template.id,
+    name: template.name,
+    summary: template.summary || template.baseUrl,
+    apiKeyUrl: template.apiKeyUrl ?? "",
+    targets: {
+      workbuddy: {
+        baseUrl: template.baseUrl,
+        modelId: template.defaultModelId,
+        protocol: "chat",
+      },
+      codex: {
+        baseUrl: template.baseUrl,
+        modelId: template.defaultModelId,
+        protocol: codexProtocol,
+      },
+      claude: {
+        baseUrl: template.anthropicBaseUrl || template.baseUrl,
+        modelId: template.defaultModelId,
+        protocol: "anthropic",
+      },
+      opencode: {
+        baseUrl: template.baseUrl,
+        modelId: template.defaultModelId,
+        protocol: "chat",
+      },
+      omp: {
+        baseUrl: template.baseUrl,
+        modelId: template.defaultModelId,
+        protocol: "chat",
+      },
+      grokbuild: {
+        baseUrl: template.baseUrl,
+        modelId: template.defaultModelId,
+        protocol: codexProtocol,
+      },
+    },
+  };
+}
 
 export function buildBatchTargetSpecs(
   preset: DesktopPresetTemplate,

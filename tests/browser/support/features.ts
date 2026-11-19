@@ -461,6 +461,7 @@ export async function installRichTauriFeatureFixture(
       claude: new Set(),
     };
     let staleDaemon = false;
+    const customGatewayTemplates: Array<Record<string, unknown>> = [];
     for (const app of ["codex", "claude"]) {
       if (fixtureOptions.aggregation) {
         const id = `fixture-${app}-second`;
@@ -2469,6 +2470,190 @@ export async function installRichTauriFeatureFixture(
                 paths: [`~/.config/${t.target}/config`],
               })),
             };
+          }
+          case "get_model_health_overview":
+            return {
+              targets: [
+                {
+                  target: "codex",
+                  configured: true,
+                  providerId: "fyagent-v2-quick-setup-codex",
+                  providerName: "DeepSeek",
+                  baseUrl: "https://api.deepseek.com",
+                  endpointHost: "api.deepseek.com",
+                  modelId: "deepseek-flash",
+                  protocol: "responses",
+                  modelCount: 1,
+                  credentialSource: "api_key",
+                  canProbe: true,
+                  canCloneSource: true,
+                  canRotateKey: true,
+                },
+                {
+                  target: "claude",
+                  configured: true,
+                  providerId: "fyagent-v2-quick-setup-claude",
+                  providerName: "DeepSeek",
+                  baseUrl: "https://api.deepseek.com/anthropic",
+                  endpointHost: "api.deepseek.com",
+                  modelId: "deepseek-v4-pro",
+                  protocol: "anthropic",
+                  modelCount: 1,
+                  credentialSource: "api_key",
+                  canProbe: true,
+                  canCloneSource: true,
+                  canRotateKey: true,
+                },
+                {
+                  target: "workbuddy",
+                  configured: false,
+                  providerId: null,
+                  providerName: null,
+                  baseUrl: null,
+                  endpointHost: null,
+                  modelId: null,
+                  protocol: null,
+                  modelCount: 0,
+                  credentialSource: "none",
+                  canProbe: false,
+                  canCloneSource: false,
+                  canRotateKey: false,
+                },
+                {
+                  target: "opencode",
+                  configured: false,
+                  providerId: null,
+                  providerName: null,
+                  baseUrl: null,
+                  endpointHost: null,
+                  modelId: null,
+                  protocol: null,
+                  modelCount: 0,
+                  credentialSource: "none",
+                  canProbe: false,
+                  canCloneSource: false,
+                  canRotateKey: false,
+                },
+                {
+                  target: "omp",
+                  configured: false,
+                  providerId: null,
+                  providerName: null,
+                  baseUrl: null,
+                  endpointHost: null,
+                  modelId: null,
+                  protocol: null,
+                  modelCount: 0,
+                  credentialSource: "none",
+                  canProbe: false,
+                  canCloneSource: false,
+                  canRotateKey: false,
+                },
+                {
+                  target: "grokbuild",
+                  configured: false,
+                  providerId: null,
+                  providerName: null,
+                  baseUrl: null,
+                  endpointHost: null,
+                  modelId: null,
+                  protocol: null,
+                  modelCount: 0,
+                  credentialSource: "none",
+                  canProbe: false,
+                  canCloneSource: false,
+                  canRotateKey: false,
+                },
+              ],
+            };
+          case "preview_clone_model_config": {
+            const req = payload.request as {
+              destinationTargets: string[];
+              modelIdOverride?: string;
+            };
+            return {
+              items: (req.destinationTargets ?? []).map((target) => ({
+                target,
+                paths: [`~/.config/${target}/config`],
+                baseUrl: "https://api.deepseek.com/v1",
+                modelId: req.modelIdOverride || "deepseek-flash",
+                ready: true,
+              })),
+            };
+          }
+          case "apply_clone_model_config": {
+            const req = payload.request as { destinationTargets: string[] };
+            return {
+              outcomes: (req.destinationTargets ?? []).map((target) => ({
+                target,
+                status: "applied",
+                message: "已写入并生效",
+                paths: [`~/.config/${target}/config`],
+              })),
+            };
+          }
+          case "preview_api_key_rotation": {
+            const req = payload.request as { targets: string[] };
+            return {
+              items: (req.targets ?? []).map((target) => ({
+                target,
+                paths: [`~/.config/${target}/config`],
+                baseUrl: "https://api.deepseek.com",
+                modelId: "deepseek-flash",
+                ready: true,
+              })),
+            };
+          }
+          case "apply_api_key_rotation": {
+            const req = payload.request as { targets: string[] };
+            return {
+              outcomes: (req.targets ?? []).map((target) => ({
+                target,
+                status: "applied",
+                message: "已写入并生效",
+                paths: [`~/.config/${target}/config`],
+              })),
+            };
+          }
+          case "list_custom_gateway_templates":
+            return [...customGatewayTemplates];
+          case "save_custom_gateway_template": {
+            const req = payload.request as Record<string, unknown>;
+            const saved: Record<string, unknown> = {
+              id: String(
+                req.id ||
+                  `custom-fixture-${customGatewayTemplates.length + 1}`,
+              ),
+              name: String(req.name || "自定义网关"),
+              summary: String(req.summary || ""),
+              baseUrl: String(req.baseUrl || "https://relay.example/v1"),
+              defaultModelId: String(req.defaultModelId || "gpt-5.4"),
+              codexProtocol: req.codexProtocol === "chat" ? "chat" : "responses",
+              updatedAt: 1763550000,
+              ...(typeof req.anthropicBaseUrl === "string" &&
+              req.anthropicBaseUrl
+                ? { anthropicBaseUrl: req.anthropicBaseUrl }
+                : {}),
+            };
+            const existingIdx = customGatewayTemplates.findIndex(
+              (item) => item.id === saved.id,
+            );
+            if (existingIdx >= 0) {
+              customGatewayTemplates[existingIdx] = saved;
+            } else {
+              customGatewayTemplates.unshift(saved);
+            }
+            return saved;
+          }
+          case "delete_custom_gateway_template": {
+            const id = String(payload.id ?? "");
+            const before = customGatewayTemplates.length;
+            for (let i = customGatewayTemplates.length - 1; i >= 0; i -= 1) {
+              if (customGatewayTemplates[i].id === id) {
+                customGatewayTemplates.splice(i, 1);
+              }
+            }
+            return customGatewayTemplates.length < before;
           }
           case "get_settings":
             return {

@@ -1643,10 +1643,18 @@ mod tests {
             "preview_omp_save",
             "apply_omp_save",
             "discover_omp_cli",
+            "get_model_health_overview",
+            "preview_clone_model_config",
+            "apply_clone_model_config",
+            "preview_api_key_rotation",
+            "apply_api_key_rotation",
+            "list_custom_gateway_templates",
+            "save_custom_gateway_template",
+            "delete_custom_gateway_template",
         ] {
             assert!(registered.contains(command));
         }
-        assert_eq!(registered.len(), 410, "review intentional handler changes");
+        assert_eq!(registered.len(), 418, "review intentional handler changes");
         assert_eq!(
             allowed, registered,
             "every registered application command must be granted exactly once while an app ACL manifest exists"
