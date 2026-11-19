@@ -15,6 +15,12 @@ const DatabaseRecoveryDialog = lazy(async () => {
   );
   return { default: DatabaseRecoveryDialog };
 });
+const WorkspaceTransferDialog = lazy(async () => {
+  const { WorkspaceTransferDialog } = await import(
+    "../../shared/features/workspace-transfer-ui/WorkspaceTransferDialog"
+  );
+  return { default: WorkspaceTransferDialog };
+});
 
 function DatabaseRecoveryEntry({
   open,
@@ -44,6 +50,8 @@ export function TopBar() {
     boolean | null
   >(null);
   const databaseRecoveryOrigin = useRef<HTMLElement | null>(null);
+  const [transferOpen, setTransferOpen] = useState<boolean | null>(null);
+  const transferOrigin = useRef<HTMLElement | null>(null);
 
   return (
     <header
@@ -68,6 +76,18 @@ export function TopBar() {
         </div>
         <div className="fy-top-bar-actions">
           <ThemeToggle />
+          <Button
+            className="fy-about-trigger"
+            data-testid="workspace-transfer"
+            aria-label="环境迁移与远程推送"
+            aria-haspopup="dialog"
+            dialogOriginRef={transferOrigin}
+            onClick={() => {
+              setTransferOpen(true);
+            }}
+          >
+            迁移与同步
+          </Button>
           <Button
             className="fy-about-trigger"
             aria-label="关于 FyAgent"
@@ -101,6 +121,15 @@ export function TopBar() {
             open={databaseRecoveryOpen}
             originRef={databaseRecoveryOrigin}
             onClose={() => setDatabaseRecoveryOpen(false)}
+          />
+        </Suspense>
+      ) : null}
+      {transferOpen !== null ? (
+        <Suspense fallback={null}>
+          <WorkspaceTransferDialog
+            open={transferOpen}
+            originRef={transferOrigin}
+            onOpenChange={setTransferOpen}
           />
         </Suspense>
       ) : null}

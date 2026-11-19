@@ -274,5 +274,17 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       pickPackageFile: rejectNativeOnly,
       pickExportPath: rejectNativeOnly,
     },
+    workspaceTransfer: {
+      pickExportPath: rejectNativeOnly,
+      pickImportFile: rejectNativeOnly,
+      previewExport: rejectNativeOnly,
+      exportPack: rejectNativeOnly,
+      inspectPack: rejectNativeOnly,
+      applyImport: rejectNativeOnly,
+      listSshHosts: async () => [],
+      testSshTarget: rejectNativeOnly,
+      previewSshPush: rejectNativeOnly,
+      applySshPush: rejectNativeOnly,
+    },
   };
 }

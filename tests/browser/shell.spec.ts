@@ -20,7 +20,11 @@ const navigationContract = [
   { path: "/memory", label: "记忆模块" },
 ] as const;
 
-const visibleControlTestIds = ["theme-toggle", "about"] as const;
+const visibleControlTestIds = [
+  "theme-toggle",
+  "workspace-transfer",
+  "about",
+] as const;
 
 const shellRegionTestIds = ["brand"] as const;
 

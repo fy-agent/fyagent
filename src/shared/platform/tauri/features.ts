@@ -43,6 +43,12 @@ export function createTauriFeaturePorts(): FeaturePorts {
     );
     return createSessionMigrationPort();
   });
+  const workspaceTransfer = memoizePort(async () => {
+    const { createWorkspaceTransferPort } = await import(
+      "./feature-ports/workspaceTransfer"
+    );
+    return createWorkspaceTransferPort();
+  });
   const managedAuth = memoizePort(async () => {
     const { createManagedAuthPort } = await import(
       "./feature-ports/managedAuth"
@@ -347,6 +353,26 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await sessionMigration()).pickPackageFile(...args),
       pickExportPath: async (...args) =>
         (await sessionMigration()).pickExportPath(...args),
+    },
+    workspaceTransfer: {
+      pickExportPath: async (...args) =>
+        (await workspaceTransfer()).pickExportPath(...args),
+      pickImportFile: async () => (await workspaceTransfer()).pickImportFile(),
+      previewExport: async (...args) =>
+        (await workspaceTransfer()).previewExport(...args),
+      exportPack: async (...args) =>
+        (await workspaceTransfer()).exportPack(...args),
+      inspectPack: async (...args) =>
+        (await workspaceTransfer()).inspectPack(...args),
+      applyImport: async (...args) =>
+        (await workspaceTransfer()).applyImport(...args),
+      listSshHosts: async () => (await workspaceTransfer()).listSshHosts(),
+      testSshTarget: async (...args) =>
+        (await workspaceTransfer()).testSshTarget(...args),
+      previewSshPush: async (...args) =>
+        (await workspaceTransfer()).previewSshPush(...args),
+      applySshPush: async (...args) =>
+        (await workspaceTransfer()).applySshPush(...args),
     },
     tooling: createGrokToolingPort(),
   };
