@@ -44,7 +44,8 @@ pub use import_result::{
     McpImportCounts, McpImportReport, McpImportSourceResult, McpProjectionFailure, McpServerView,
 };
 pub use opencode::{
-    import_from_opencode, remove_server_from_opencode, sync_single_server_to_opencode,
+    convert_to_opencode_format, import_from_opencode, remove_server_from_opencode,
+    sync_single_server_to_opencode,
 };
 pub use qoderwork::{
     import_from_qoderwork, remove_server_from_qoderwork, sync_single_server_to_qoderwork,

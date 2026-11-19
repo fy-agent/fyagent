@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "335856373b92a1b9cfd6a616e8b7746265edc8bbb1c5ff45757ca3ee12632401"
+      "ea38fcf2b0d601d18f3765041badd942df4f8cfa432be9a2ea59fe6ae7112bf0"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "fd568a8ea0432afbdcba1c6edc117dff7296b24720f8fc1c47c4d22ec1a6230d"
+      "c7e7a2270c27a995f6c7efb51cd1d9c224d808e88ddda52e28ac2fd3f06091df"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -348,6 +348,10 @@
     [
       "src-tauri/src/services/qoderwork.rs",
       "6c587d547b7fae6adac402781a50776886572faa65ad17ab4c16cc153309b882"
+    ],
+    [
+      "src-tauri/src/services/remote_push/transport.rs",
+      "dee87b114d15525c6608e1b52002559764d423490c8e7d3a10155419b56b9f2b"
     ],
     [
       "src-tauri/src/services/secret/mod.rs",

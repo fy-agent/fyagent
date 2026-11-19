@@ -987,3 +987,29 @@ test("Models health overview probes configured clients and saves a reusable cust
   await expectNoHorizontalOverflow(page);
   await expectHealthyPage(page, health);
 });
+
+test("TopBar migration and SSH push dialog previews <=100 MiB projection pack and agentless remote files", async ({
+  page,
+}) => {
+  await installRichTauriFeatureFixture(page);
+  const health = monitorPageHealth(page);
+  await openRendererPage(page, "/models?target=codex");
+
+  await page.getByRole("button", { name: "环境迁移与远程推送" }).click();
+  const dialog = page.getByRole("dialog", { name: "环境迁移与远程推送" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("data-motion-settled", "true");
+
+  await dialog.getByRole("button", { name: "估算体积预算" }).click();
+  await expect(dialog.getByText(/100\.00 MiB 硬上限/)).toBeVisible();
+
+  await dialog.getByRole("tab", { name: "推送到 SSH 远端" }).click();
+  await dialog.getByRole("button", { name: /dev-box \(10\.0\.0\.12\)/ }).click();
+  await dialog.getByRole("button", { name: "预览远端推送清单" }).click();
+  await expect(dialog.getByText("~/.codex/auth.json")).toBeVisible();
+  await expect(dialog.getByText("chmod 600")).toBeVisible();
+
+  await dialog.getByRole("button", { name: "关闭" }).click();
+  await expectNoHorizontalOverflow(page);
+  await expectHealthyPage(page, health);
+});

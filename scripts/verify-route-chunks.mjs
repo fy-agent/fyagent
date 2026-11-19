@@ -29,12 +29,14 @@ export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES = Object.freeze([
   "shared/platform/tauri/feature-ports/changePlans.ts",
   "shared/platform/tauri/feature-ports/qoderTrae.ts",
   "shared/platform/tauri/feature-ports/content.ts",
+  "shared/platform/tauri/feature-ports/workspaceTransfer.ts",
 ]);
 
 export const RENDERER_DEFERRED_SHELL_ENTRIES = Object.freeze([
   "widgets/app-shell/AboutDialog.tsx",
   "widgets/app-shell/CodexReloadBanner.tsx",
   "shared/features/database-recovery-ui/DatabaseRecoveryDialog.tsx",
+  "shared/features/workspace-transfer-ui/WorkspaceTransferDialog.tsx",
 ]);
 
 export const RENDERER_NESTED_SUBSCRIPTION_PORT = Object.freeze({

@@ -31,7 +31,7 @@ use crate::{
     store::AppState,
 };
 
-const ALL_CONFIGURABLE_TARGETS: [BatchSetupTargetId; 6] = [
+pub(crate) const ALL_CONFIGURABLE_TARGETS: [BatchSetupTargetId; 6] = [
     BatchSetupTargetId::Workbuddy,
     BatchSetupTargetId::Codex,
     BatchSetupTargetId::Claude,
@@ -108,10 +108,10 @@ impl fmt::Debug for ApiKeyRotationApplyRequest {
     }
 }
 
-struct NativeTargetDetails {
-    snapshot: TargetModelSnapshot,
-    api_key: Option<Zeroizing<String>>,
-    extra_model_ids: Vec<String>,
+pub(crate) struct NativeTargetDetails {
+    pub(crate) snapshot: TargetModelSnapshot,
+    pub(crate) api_key: Option<Zeroizing<String>>,
+    pub(crate) extra_model_ids: Vec<String>,
 }
 
 fn extract_endpoint_host(base_url: Option<&str>) -> Option<String> {
@@ -660,7 +660,7 @@ fn scrub_secret_echo(field: &mut Option<String>, secret: &str) {
     }
 }
 
-fn inspect_target(state: &AppState, target: BatchSetupTargetId) -> NativeTargetDetails {
+pub(crate) fn inspect_target(state: &AppState, target: BatchSetupTargetId) -> NativeTargetDetails {
     let mut details = match target {
         BatchSetupTargetId::Workbuddy => inspect_workbuddy_target(),
         BatchSetupTargetId::Opencode => inspect_opencode_target(),

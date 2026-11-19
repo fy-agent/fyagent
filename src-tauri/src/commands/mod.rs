@@ -49,6 +49,7 @@ mod managed_auth;
 mod usage;
 mod workbuddy;
 mod workspace;
+mod workspace_transfer;
 
 pub use agent_auth::*;
 pub use agent_catalog::*;
@@ -100,3 +101,4 @@ pub use managed_auth::*;
 pub use usage::*;
 pub use workbuddy::*;
 pub use workspace::*;
+pub(crate) use workspace_transfer::*;

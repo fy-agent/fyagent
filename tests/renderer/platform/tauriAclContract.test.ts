@@ -124,7 +124,7 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(179);
+    expect(renderer.commands.size).toBe(189);
     for (const command of [
       "get_global_proxy_config",
       "update_global_proxy_config",
@@ -155,6 +155,16 @@ describe("Native ACL contract", () => {
       "list_custom_gateway_templates",
       "save_custom_gateway_template",
       "delete_custom_gateway_template",
+      "pick_workspace_pack_export_path",
+      "pick_workspace_pack_file",
+      "preview_workspace_pack_export",
+      "export_workspace_pack",
+      "inspect_workspace_pack",
+      "apply_workspace_pack_import",
+      "list_ssh_hosts",
+      "test_ssh_target",
+      "preview_ssh_config_push",
+      "apply_ssh_config_push",
       "probe_saved_model",
     ]) {
       expect(renderer.commands.has(command)).toBe(true);

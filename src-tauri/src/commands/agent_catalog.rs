@@ -1651,10 +1651,20 @@ mod tests {
             "list_custom_gateway_templates",
             "save_custom_gateway_template",
             "delete_custom_gateway_template",
+            "pick_workspace_pack_export_path",
+            "pick_workspace_pack_file",
+            "preview_workspace_pack_export",
+            "export_workspace_pack",
+            "inspect_workspace_pack",
+            "apply_workspace_pack_import",
+            "list_ssh_hosts",
+            "test_ssh_target",
+            "preview_ssh_config_push",
+            "apply_ssh_config_push",
         ] {
             assert!(registered.contains(command));
         }
-        assert_eq!(registered.len(), 418, "review intentional handler changes");
+        assert_eq!(registered.len(), 428, "review intentional handler changes");
         assert_eq!(
             allowed, registered,
             "every registered application command must be granted exactly once while an app ACL manifest exists"

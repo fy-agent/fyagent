@@ -43,6 +43,19 @@ pub enum BatchSetupTargetId {
     Grokbuild,
 }
 
+impl BatchSetupTargetId {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Workbuddy => "workbuddy",
+            Self::Codex => "codex",
+            Self::Claude => "claude",
+            Self::Opencode => "opencode",
+            Self::Omp => "omp",
+            Self::Grokbuild => "grokbuild",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BatchSetupTargetSpec {

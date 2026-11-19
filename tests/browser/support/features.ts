@@ -2655,6 +2655,168 @@ export async function installRichTauriFeatureFixture(
             }
             return customGatewayTemplates.length < before;
           }
+          case "pick_workspace_pack_export_path":
+            return "/tmp/fyagent-export.fyagent-pack";
+          case "pick_workspace_pack_file":
+            return "/tmp/fyagent-import.fyagent-pack";
+          case "preview_workspace_pack_export":
+            return {
+              counts: {
+                models: 2,
+                customTemplates: 1,
+                mcpServers: 2,
+                prompts: 2,
+                skills: 3,
+                sessionsIncluded: 18,
+                sessionsExcluded: 0,
+              },
+              apiKeyCount: 2,
+              breakdown: {
+                modelsBytes: 1024,
+                templatesBytes: 512,
+                mcpBytes: 2048,
+                promptsBytes: 4096,
+                skillsBytes: 65536,
+                sessionsBytes: 420000,
+                totalUncompressedBytes: 493216,
+                estimatedCompressedBytes: 98304,
+                softWarningBytes: 80 * 1024 * 1024,
+                hardLimitBytes: 100 * 1024 * 1024,
+                withinHardLimit: true,
+              },
+              warnings: [],
+            };
+          case "export_workspace_pack":
+            return {
+              path: "/tmp/fyagent-export.fyagent-pack",
+              packId: "fypk-browser-fixture",
+              compressedBytes: 98304,
+              uncompressedBytes: 493216,
+              fileSha256: "a".repeat(64),
+              hasEncryptedSecrets: true,
+              counts: {
+                models: 2,
+                customTemplates: 1,
+                mcpServers: 2,
+                prompts: 2,
+                skills: 3,
+                sessionsIncluded: 18,
+                sessionsExcluded: 0,
+              },
+              warnings: [],
+            };
+          case "inspect_workspace_pack": {
+            const req = payload.request as { passphrase?: string | null };
+            const unlocked = Boolean(req.passphrase);
+            return {
+              path: "/tmp/fyagent-import.fyagent-pack",
+              manifest: {
+                schema: "fyagent-workspace-pack/v1",
+                packId: "fypk-browser-fixture",
+                exportedAt: 1763550000,
+                appVersion: "0.4.16",
+                platform: "macos",
+                hasEncryptedSecrets: true,
+                sessionProjectionMode: "full_dialogue",
+                payloadSha256: "b".repeat(64),
+                uncompressedBytes: 493216,
+                compressedBytes: 98304,
+                budgetLimitBytes: 100 * 1024 * 1024,
+                counts: {
+                  models: 2,
+                  customTemplates: 1,
+                  mcpServers: 2,
+                  prompts: 2,
+                  skills: 3,
+                  sessionsIncluded: 18,
+                  sessionsExcluded: 0,
+                },
+                warnings: [],
+              },
+              secretsLocked: !unlocked,
+              decryptedApiKeyTargets: unlocked ? ["codex", "claude"] : [],
+              modelTargets: ["codex", "claude"],
+              strictSessionCount: 10,
+              portableSessionCount: 8,
+              warnings: [],
+            };
+          }
+          case "apply_workspace_pack_import":
+            return {
+              modelsApplied: 2,
+              modelsSkipped: 0,
+              templatesImported: 1,
+              mcpImported: 2,
+              promptsImported: 2,
+              skillsImported: 3,
+              sessionsArchived: 18,
+              sessionArchiveDir: "~/.fyagent/imported-sessions/fypk-browser-fixture",
+              warnings: [],
+            };
+          case "list_ssh_hosts":
+            return [
+              {
+                alias: "dev-box",
+                hostName: "10.0.0.12",
+                user: "dev",
+                port: 22,
+                identityFile: "~/.ssh/id_ed25519",
+              },
+            ];
+          case "test_ssh_target":
+            return {
+              ok: true,
+              remoteHome: "/Users/dev",
+              message: "SSH 连通正常，远端支持无客户端直接写入配置",
+            };
+          case "preview_ssh_config_push": {
+            const req = payload.request as { target: { host: string } };
+            return {
+              destination: req.target.host || "dev-box",
+              remoteHome: "/Users/dev",
+              reachable: true,
+              files: [
+                {
+                  remotePath: "~/.codex/config.toml",
+                  category: "model_config",
+                  bytes: 420,
+                  mode: "644",
+                  containsSecret: false,
+                  action: "update",
+                },
+                {
+                  remotePath: "~/.codex/auth.json",
+                  category: "model_config",
+                  bytes: 64,
+                  mode: "600",
+                  containsSecret: true,
+                  action: "create",
+                },
+              ],
+              totalBytes: 484,
+              warnings: [],
+            };
+          }
+          case "apply_ssh_config_push":
+            return {
+              ok: true,
+              backupDir: "/Users/dev/.fyagent-remote-backups/20261119T143000Z",
+              outcomes: [
+                {
+                  remotePath: "~/.codex/config.toml",
+                  ok: true,
+                  action: "updated",
+                  message: "已备份原文件并更新生效",
+                },
+                {
+                  remotePath: "~/.codex/auth.json",
+                  ok: true,
+                  action: "created",
+                  message: "已创建并生效",
+                },
+              ],
+              warnings: [],
+            };
           case "get_settings":
             return {
               skillSyncMethod: "auto",

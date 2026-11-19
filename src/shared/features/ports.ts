@@ -387,6 +387,7 @@ export interface FeaturePorts {
   prompts: PromptsPort;
   memory: MemoryPort;
   sessions: import("./session-migration").SessionMigrationPort;
+  workspaceTransfer: import("./workspace-transfer").WorkspaceTransferPort;
   settings: SettingsPort;
   tooling: GrokToolingPort;
 }

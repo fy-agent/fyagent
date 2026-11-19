@@ -23,6 +23,7 @@ pub(crate) mod provider;
 pub(crate) mod provider_api;
 pub(crate) mod proxy;
 pub(crate) mod qoderwork;
+pub(crate) mod remote_push;
 pub(crate) mod saved_model_probe;
 pub(crate) mod secret;
 pub(crate) mod session_usage;
@@ -42,6 +43,7 @@ pub(crate) mod traework_models;
 pub(crate) mod usage_cache;
 pub(crate) mod usage_stats;
 pub(crate) mod workbuddy;
+pub(crate) mod workspace_pack;
 
 pub use codex_desktop::CodexDesktopService;
 pub use config::ConfigService;
