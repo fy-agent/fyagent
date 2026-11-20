@@ -11,7 +11,7 @@
     ],
     [
       "scripts/release/verify-windows-nsis-contract.mjs",
-      "5b1b3cfdf819a19edf7334a8f8da2f354a013d549fefcfc6a726762ba20f97c3"
+      "90f010fa2ec6ae5d5c2aac9d4d2cc87e8112998e1cc410ef4440cddf48dfd816"
     ],
     [
       "scripts/release/windows-signing.mjs",
