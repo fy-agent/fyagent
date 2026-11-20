@@ -1630,6 +1630,10 @@ describe("FyAgent release workflow", () => {
     );
     expect(contract).toContain("release_mode=\'preflight\'");
     expect(contract).toContain("windows_signing_rehearsal=true");
+    expect(contract).toContain(
+      "Formal Windows release requires the configured signing provider or a sealed signed installer pair.",
+    );
+    expect(contract).toContain("windows_byte_source=offline-sealed");
     const signer = workflowJobBlock(
       source,
       "sign-windows-formal",
@@ -1648,7 +1652,12 @@ describe("FyAgent release workflow", () => {
     expect(verify).toContain(
       '.mode == "signed" and all(.assets[]; .signature.status == "Valid")',
     );
+    expect(verify).toContain(
+      'if [ "$RELEASE_MODE" = formal ] || [ "$WINDOWS_SIGNING_REHEARSAL" = true ]; then',
+    );
     const publish = source.slice(source.indexOf("\n  publish:\n"));
+    expect(publish.match(/\.mode == "signed" and/gu)).toHaveLength(2);
+    expect(publish).not.toContain('.mode == "unsigned"');
     expect(publish).toContain(PUBLISH_JOB_IF_LINE);
     expect(publish).not.toContain("signed-preflight");
   });
@@ -2341,11 +2350,11 @@ describe("FyAgent release workflow", () => {
       "    needs: [eligibility, pin-release-build-inputs]",
     );
     expect(formal).toContain(
-      "runs-on: ${{ (needs.eligibility.outputs.windows_signing_rehearsal == 'true' || vars.FYAGENT_WINDOWS_SIGNING_MODE == 'provider') && 'fyagent-simplysign' || 'windows-2025' }}",
+      "runs-on: [self-hosted, Windows, X64, fyagent-simplysign]",
     );
     expect(formal).not.toContain("runner: windows-11-vs2026-arm");
     expect(formal).toContain(
-      "Expected $env:EXPECTED_RUNNER_ENVIRONMENT Windows x64 signing runner",
+      "Expected a self-hosted Windows x64 signing runner",
     );
     expect(formal).toContain("permissions:\n      contents: read");
     expect(formal).not.toContain("id-token:");
@@ -2369,10 +2378,8 @@ describe("FyAgent release workflow", () => {
     expect(transform).toContain(
       "SIGNING_MODE_CONFIG: ${{ vars.FYAGENT_WINDOWS_SIGNING_MODE }}",
     );
-    expect(transform).toContain(
-      "$providerConfig | Where-Object { $_ -cne '' }",
-    );
-    expect(transform.match(/if \(\$hasProviderConfig\)/gu)).toHaveLength(2);
+    expect(transform).toContain("Formal Windows signing requires provider mode.");
+    expect(transform).not.toContain("'unsigned'");
     expect(transform).toContain(
       "$requiredProviderConfig | Where-Object { $_ -ceq '' }",
     );
@@ -2457,7 +2464,7 @@ describe("FyAgent release workflow", () => {
     expect(verification).toContain("'verify-sealed'");
     expect(verification).toContain("'--raw'");
     expect(verification).toContain("'--candidate'");
-    expect(verification).toContain("--mode unsigned");
+    expect(verification).not.toContain("--mode unsigned");
     expect(verification).toContain("--mode provider");
     expect(verification).toContain("--expected-publisher");
     expect(verification).toContain("--expected-certificate-sha256");

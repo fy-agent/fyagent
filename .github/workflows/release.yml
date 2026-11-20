@@ -206,6 +206,7 @@ jobs:
           REQUESTED_MODE: ${{ steps.request.outputs.requested_mode }}
           REQUESTED_REPAIR: ${{ steps.request.outputs.requested_repair }}
           REQUESTED_SOURCE_SHA: ${{ steps.request.outputs.requested_source_sha }}
+          WINDOWS_SIGNING_MODE: ${{ vars.FYAGENT_WINDOWS_SIGNING_MODE }}
         run: |
           set -euo pipefail
 
@@ -419,6 +420,13 @@ jobs:
               --version "$app_version" \
               --mode "$release_mode" \
               --github-output "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$release_mode" = 'formal' ] &&
+            ! grep -qx 'windows_byte_source=offline-sealed' "$GITHUB_OUTPUT" &&
+            [ "$WINDOWS_SIGNING_MODE" != 'provider' ]; then
+            echo 'Formal Windows release requires the configured signing provider or a sealed signed installer pair.' >&2
+            exit 1
           fi
 
           {
@@ -907,7 +915,7 @@ jobs:
     name: Windows ${{ matrix.architecture }} formal signing
     if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal == 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild')) }}"
     needs: [eligibility, pin-release-build-inputs]
-    runs-on: ${{ (needs.eligibility.outputs.windows_signing_rehearsal == 'true' || vars.FYAGENT_WINDOWS_SIGNING_MODE == 'provider') && 'fyagent-simplysign' || 'windows-2025' }}
+    runs-on: [self-hosted, Windows, X64, fyagent-simplysign]
     timeout-minutes: 15
     permissions:
       contents: read
@@ -936,13 +944,11 @@ jobs:
 
       - name: Verify authorized Windows signing runner
         shell: pwsh
-        env:
-          EXPECTED_RUNNER_ENVIRONMENT: ${{ (needs.eligibility.outputs.windows_signing_rehearsal == 'true' || vars.FYAGENT_WINDOWS_SIGNING_MODE == 'provider') && 'self-hosted' || 'github-hosted' }}
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or
-              $env:RUNNER_ENVIRONMENT -cne $env:EXPECTED_RUNNER_ENVIRONMENT) {
-            throw "Expected $env:EXPECTED_RUNNER_ENVIRONMENT Windows x64 signing runner, got $env:RUNNER_ENVIRONMENT $env:RUNNER_OS/$env:RUNNER_ARCH"
+              $env:RUNNER_ENVIRONMENT -cne 'self-hosted') {
+            throw "Expected a self-hosted Windows x64 signing runner, got $env:RUNNER_ENVIRONMENT $env:RUNNER_OS/$env:RUNNER_ARCH"
           }
           if ((git rev-parse HEAD) -cne $env:SOURCE_SHA) {
             throw 'Windows signing checkout is not the frozen source SHA'
@@ -1007,9 +1013,8 @@ jobs:
       # Store that script's exact bytes in the adapter secret. This job writes them
       # to a temporary absolute .ps1 and assigns FYAGENT_WINDOWS_SIGNER_ADAPTER.
       # The adapter requires FYAGENT_WINDOWS_SIGNER_CREDENTIAL and an RFC 3161
-      # timestamp; a missing credential fails closed. The repository signing mode
-      # stays unsigned until that checklist is complete. Do not add a parallel
-      # Azure Trusted Signing workflow.
+      # timestamp. Until the provider is ready, formal publication requires
+      # independently sealed signed installers through offline admission.
       - name: Produce untrusted formal Windows candidate
         shell: pwsh
         env:
@@ -1071,9 +1076,6 @@ jobs:
             [string]$env:SIGNER_CERTIFICATE_CONFIG,
             [string]$env:SIGNER_CREDENTIAL_CONFIG
           )
-          $hasProviderConfig = @(
-            $providerConfig | Where-Object { $_ -cne '' }
-          ).Count -ne 0
           foreach ($name in $managedSignerEnvironment) {
             [Environment]::SetEnvironmentVariable($name, $null, 'Process')
           }
@@ -1081,61 +1083,46 @@ jobs:
           $adapterPath = $null
           $requiredProviderConfig = $null
           try {
-            switch -CaseSensitive ([string]$env:SIGNING_MODE_CONFIG) {
-              '' {
-                if ($hasProviderConfig) {
-                  throw 'FYAGENT_WINDOWS_SIGNING_MODE must select provider before defining signer configuration.'
-                }
-              }
-              'unsigned' {
-                if ($hasProviderConfig) {
-                  throw 'Signer configuration must be absent when FYAGENT_WINDOWS_SIGNING_MODE is unsigned.'
-                }
-                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNING_MODE', 'unsigned', 'Process')
-              }
-              'provider' {
-                $requiredProviderConfig = @(
-                  [string]$env:SIGNER_ADAPTER_BASE64_CONFIG,
-                  [string]$env:SIGNER_PUBLISHER_CONFIG,
-                  [string]$env:SIGNER_CERTIFICATE_CONFIG
-                )
-                if (@($requiredProviderConfig | Where-Object { $_ -ceq '' }).Count -ne 0) {
-                  throw 'Provider signing requires adapter bytes, expected publisher, and certificate SHA-256.'
-                }
-                try {
-                  $adapterBytes = [Convert]::FromBase64String($env:SIGNER_ADAPTER_BASE64_CONFIG)
-                } catch {
-                  throw 'FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 is not valid base64.'
-                }
-                if ($adapterBytes.Length -eq 0 -or $adapterBytes.Length -gt 49152) {
-                  throw 'FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 must decode to 1..49152 bytes.'
-                }
-                $adapterName = ".fyagent-windows-signer-$([Guid]::NewGuid().ToString('N')).ps1"
-                $adapterPath = [IO.Path]::Combine($env:RUNNER_TEMP, $adapterName)
-                $adapterStream = [IO.FileStream]::new(
-                  $adapterPath,
-                  [IO.FileMode]::CreateNew,
-                  [IO.FileAccess]::Write,
-                  [IO.FileShare]::None
-                )
-                try {
-                  $adapterStream.Write($adapterBytes, 0, $adapterBytes.Length)
-                  $adapterStream.Flush($true)
-                } finally {
-                  $adapterStream.Dispose()
-                  [Array]::Clear($adapterBytes, 0, $adapterBytes.Length)
-                }
-                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNING_MODE', 'provider', 'Process')
-                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNER_ADAPTER', $adapterPath, 'Process')
-                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER', $env:SIGNER_PUBLISHER_CONFIG, 'Process')
-                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256', $env:SIGNER_CERTIFICATE_CONFIG, 'Process')
-                if ([string]$env:SIGNER_CREDENTIAL_CONFIG -cne '') {
-                  [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNER_CREDENTIAL', $env:SIGNER_CREDENTIAL_CONFIG, 'Process')
-                }
-              }
-              default {
-                throw 'FYAGENT_WINDOWS_SIGNING_MODE must be unsigned or provider.'
-              }
+            if ($env:SIGNING_MODE_CONFIG -cne 'provider') {
+              throw 'Formal Windows signing requires provider mode.'
+            }
+            $requiredProviderConfig = @(
+              [string]$env:SIGNER_ADAPTER_BASE64_CONFIG,
+              [string]$env:SIGNER_PUBLISHER_CONFIG,
+              [string]$env:SIGNER_CERTIFICATE_CONFIG
+            )
+            if (@($requiredProviderConfig | Where-Object { $_ -ceq '' }).Count -ne 0) {
+              throw 'Provider signing requires adapter bytes, expected publisher, and certificate SHA-256.'
+            }
+            try {
+              $adapterBytes = [Convert]::FromBase64String($env:SIGNER_ADAPTER_BASE64_CONFIG)
+            } catch {
+              throw 'FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 is not valid base64.'
+            }
+            if ($adapterBytes.Length -eq 0 -or $adapterBytes.Length -gt 49152) {
+              throw 'FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 must decode to 1..49152 bytes.'
+            }
+            $adapterName = ".fyagent-windows-signer-$([Guid]::NewGuid().ToString('N')).ps1"
+            $adapterPath = [IO.Path]::Combine($env:RUNNER_TEMP, $adapterName)
+            $adapterStream = [IO.FileStream]::new(
+              $adapterPath,
+              [IO.FileMode]::CreateNew,
+              [IO.FileAccess]::Write,
+              [IO.FileShare]::None
+            )
+            try {
+              $adapterStream.Write($adapterBytes, 0, $adapterBytes.Length)
+              $adapterStream.Flush($true)
+            } finally {
+              $adapterStream.Dispose()
+              [Array]::Clear($adapterBytes, 0, $adapterBytes.Length)
+            }
+            [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNING_MODE', 'provider', 'Process')
+            [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNER_ADAPTER', $adapterPath, 'Process')
+            [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER', $env:SIGNER_PUBLISHER_CONFIG, 'Process')
+            [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256', $env:SIGNER_CERTIFICATE_CONFIG, 'Process')
+            if ([string]$env:SIGNER_CREDENTIAL_CONFIG -cne '') {
+              [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNER_CREDENTIAL', $env:SIGNER_CREDENTIAL_CONFIG, 'Process')
             }
             foreach ($name in $stagingSignerEnvironment) {
               [Environment]::SetEnvironmentVariable($name, $null, 'Process')
@@ -1296,33 +1283,15 @@ jobs:
             $env:PUBLIC_EXPECTED_PUBLISHER = $policy.publisher
             $env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 = $policy.certificateSha256
           }
-          switch -CaseSensitive ([string]$env:PUBLIC_SIGNING_MODE) {
-            '' {
-              if ([string]$env:PUBLIC_EXPECTED_PUBLISHER -cne '' -or
-                  [string]$env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 -cne '') {
-                throw 'Absent Windows signing mode cannot define public provider policy.'
-              }
-              & node @commonArguments --mode unsigned
-            }
-            'unsigned' {
-              if ([string]$env:PUBLIC_EXPECTED_PUBLISHER -cne '' -or
-                  [string]$env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 -cne '') {
-                throw 'Unsigned Windows signing mode cannot define public provider policy.'
-              }
-              & node @commonArguments --mode unsigned
-            }
-            'provider' {
-              if ([string]$env:PUBLIC_EXPECTED_PUBLISHER -ceq '' -or
-                  [string]$env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 -ceq '') {
-                throw 'Provider mode requires complete public publisher and certificate policy.'
-              }
-              & node @commonArguments `
-                --mode provider `
-                --expected-publisher $env:PUBLIC_EXPECTED_PUBLISHER `
-                --expected-certificate-sha256 $env:PUBLIC_EXPECTED_CERTIFICATE_SHA256
-            }
-            default { throw 'FYAGENT_WINDOWS_SIGNING_MODE must be unsigned or provider.' }
+          if ($env:PUBLIC_SIGNING_MODE -cne 'provider' -or
+              [string]$env:PUBLIC_EXPECTED_PUBLISHER -ceq '' -or
+              [string]$env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 -ceq '') {
+            throw 'Formal Windows verification requires a configured signing provider and certificate policy.'
           }
+          & node @commonArguments `
+            --mode provider `
+            --expected-publisher $env:PUBLIC_EXPECTED_PUBLISHER `
+            --expected-certificate-sha256 $env:PUBLIC_EXPECTED_CERTIFICATE_SHA256
           if ($LASTEXITCODE -ne 0) {
             throw "Independent Windows formal verification failed with exit code $LASTEXITCODE"
           }
@@ -2085,7 +2054,7 @@ jobs:
                 --version "$APP_VERSION" \
                 --source-sha "$SOURCE_SHA" \
                 --output verified-subjects/signing-status.json
-              if [ "$WINDOWS_SIGNING_REHEARSAL" = true ]; then
+              if [ "$RELEASE_MODE" = formal ] || [ "$WINDOWS_SIGNING_REHEARSAL" = true ]; then
                 jq -e '.mode == "signed" and all(.assets[]; .signature.status == "Valid")' \
                   verified-subjects/signing-status.json >/dev/null
               fi
@@ -2444,7 +2413,8 @@ jobs:
               jq -e --arg version "$APP_VERSION" --arg source "$SOURCE_SHA" '
                 .schema == "fyagent-windows-signing-status/v1" and
                 .product == "FyAgent" and .version == $version and .sourceSha == $source and
-                (.mode == "signed" or .mode == "unsigned") and
+                .mode == "signed" and
+                (([.assets[].signature.status] | unique) == ["Valid"]) and
                 (has("offlineAdmission") | not) and
                 (([.assets[].architecture] | sort) == ["arm64", "x64"]) and
                 (([.assets[].name] | sort) == ([

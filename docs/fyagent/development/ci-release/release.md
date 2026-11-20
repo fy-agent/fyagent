@@ -62,11 +62,13 @@ uninstall diagnostic on fresh matching Windows runners.
    signed installers must pass independent verification on matching GitHub-hosted
    Windows runners, including SignTool chain and timestamp checks. This mode
    produces workflow artifacts without publishing a GitHub Release.
-4. For signed formal publication, confirm the Windows provider setup and
-   release identity, then use the formal tag workflow. Keep the signer
-   isolated from untrusted workflows. The GitHub-hosted build and verification
-   jobs need no operator workstation. Certum signing still needs a protected
-   signing runner with an activated SimplySign session.
+4. Use the formal tag workflow with a configured provider or an admitted,
+   independently sealed installer pair. The release requires valid signatures
+   for both Windows architectures. An authorized operator can start the
+   release from any machine. The signing job selects a protected Windows x64
+   runner by labels and uses that runner's activated SimplySign session.
+   See [Windows release identity and recovery](../../../release/release-identity.md)
+   for provisioning a replacement signer and verifying it before failover.
 
 Release metadata retains real schema identities for download manifests,
 platform builds, aggregate build metadata, and Windows signing status. The
