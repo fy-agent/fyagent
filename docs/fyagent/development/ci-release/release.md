@@ -65,10 +65,11 @@ uninstall diagnostic on fresh matching Windows runners.
 4. Use the formal tag workflow with a configured provider or an admitted,
    independently sealed installer pair. The release requires valid signatures
    for both Windows architectures. An authorized operator can start the
-   release from any machine. The signing job selects a protected Windows x64
-   runner by labels and uses that runner's activated SimplySign session.
-   See [Windows release identity and recovery](../../../release/release-identity.md)
-   for provisioning a replacement signer and verifying it before failover.
+   release from any machine. DigiCert KeyLocker uses service credentials on a
+   GitHub-hosted runner. The Certum backend uses a protected Windows signer
+   with an activated SimplySign session. See
+   [Windows release identity and recovery](../../../release/release-identity.md)
+   for cloud signing enrollment and verification.
 
 Release metadata retains real schema identities for download manifests,
 platform builds, aggregate build metadata, and Windows signing status. The

@@ -4,7 +4,7 @@
 身份行仍是占位时，仓库变量 `FYAGENT_WINDOWS_SIGNING_MODE` 必须保持 `unsigned`。
 不要因为本机已经能连上 SimplySign，就把默认模式改成 `provider`。
 
-Windows 正式签名路径是 **Certum／SimplySign**，沿用现有 adapter 边界：
+当前生产证书的签名路径是 **Certum／SimplySign**，沿用现有 adapter 边界：
 
 `prove-windows-preflight`（unsigned）与 `sign-windows-formal` → `seal-windows-formal` 分开。
 不另开 Azure Trusted Signing 或第二条流水线。adapter 文件是
@@ -17,6 +17,17 @@ Release 将 x64 与 arm64 安装包交给匹配 `self-hosted`、`Windows`、`X64
 本机 AIMaster 上的 SimplySign／Certum 操作只作为参考。它不是 CI 正式证据。
 正式证据只来自 `fy-agent/fyagent` 的 Release 工作流：x64 与 arm64 各自签名、各自在干净 runner 上复验。
 验收命令是 `signtool verify /pa /all /v /tw`，只接受退出码 0。缺 publisher、证书 SHA-256、RFC 3161 时间戳、证书链或安装包 SHA-256 时，现有 seal 逻辑 fail-closed。
+
+## 无人值守签名迁移
+
+DigiCert KeyLocker 可在 GitHub 托管 Windows runner 上签名。发布者只需触发现有发布入口。服务账号调用云端签名密钥，日常发布无需启动 SimplySign 或输入手机验证码。
+
+1. 以公司身份开通 KeyLocker，申请新的 Authenticode 证书，并启用 DigiCert Binary Signing 的 simple signing。核验新证书的发布者、原始证书字节的 SHA-256 和到期日。在 DigiCert 配置仅有发布专用密钥签名权限的服务账号。
+2. 为 `windows-code-signing` GitHub environment 配置受保护的 `main` 和发布标签。发布标签需要 GitHub 保护规则。将 `SM_HOST`、`SM_KEYPAIR_ALIAS` 配置为 environment 变量，将 `SM_API_KEY`、`SM_CLIENT_CERT_FILE_B64`、`SM_CLIENT_CERT_PASSWORD` 配置为 environment secrets。客户端认证证书用于服务登录，代码签名私钥由 KeyLocker 保管。为实现日常无人值守，部署策略通过受保护 ref 控制，不在 environment 设置每次发布的人工审批。
+3. 配置仓库变量 `FYAGENT_WINDOWS_SIGNER_BACKEND=digicert-keylocker` 以及新证书的 `FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER` 和 `FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256`。在 GitHub 上从受保护的 `main` 跑一次 `signed-preflight`。保留 x64 和 ARM64 的独立签名验证结果。
+4. 演练通过并更新下方发布身份记录后，将 `FYAGENT_WINDOWS_SIGNING_MODE` 切换到 `provider`。由另一台设备发起下一次正式发布并复核对应 GitHub run 的签名证据。证书或服务账号凭据轮换时重新执行签名预检。
+
+[GitHub Actions 的 DigiCert Binary Signing 官方文档](https://docs.digicert.com/en/digicert-keylocker/ci-cd-integrations-and-deployment-pipelines/plugins/github/binary-signing-using-github-actions.html)
 
 ## 身份表
 
@@ -72,7 +83,7 @@ Release 将 x64 与 arm64 安装包交给匹配 `self-hosted`、`Windows`、`X64
 - `certificateSha1`：给 `signtool /sha1` 选择 SimplySign 证书，40 位小写十六进制。
 - `FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256`：证书原始字节的 SHA-256，64 位小写十六进制。seal 用它核对签名者，不把它当作 `/sha1` 参数。
 
-## 打开 provider 之前的检查清单
+## 打开 Certum provider 之前的检查清单
 
 全部满足之前，`FYAGENT_WINDOWS_SIGNING_MODE` 保持 `unsigned`：
 

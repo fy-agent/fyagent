@@ -1634,6 +1634,9 @@ describe("FyAgent release workflow", () => {
       "Formal Windows release requires the configured signing provider or a sealed signed installer pair.",
     );
     expect(contract).toContain("windows_byte_source=offline-sealed");
+    expect(contract).toContain(
+      "DigiCert cloud signing requires protected main or a protected release tag.",
+    );
     const signer = workflowJobBlock(
       source,
       "sign-windows-formal",
@@ -2350,11 +2353,11 @@ describe("FyAgent release workflow", () => {
       "    needs: [eligibility, pin-release-build-inputs]",
     );
     expect(formal).toContain(
-      "runs-on: [self-hosted, Windows, X64, fyagent-simplysign]",
+      `runs-on: \${{ fromJSON(vars.FYAGENT_WINDOWS_SIGNER_BACKEND == 'digicert-keylocker' && '["windows-2025"]' || '["self-hosted","Windows","X64","fyagent-simplysign"]') }}`,
     );
     expect(formal).not.toContain("runner: windows-11-vs2026-arm");
     expect(formal).toContain(
-      "Expected a self-hosted Windows x64 signing runner",
+      "Expected $env:EXPECTED_RUNNER_ENVIRONMENT Windows x64 signing runner",
     );
     expect(formal).toContain("permissions:\n      contents: read");
     expect(formal).not.toContain("id-token:");
@@ -2468,6 +2471,36 @@ describe("FyAgent release workflow", () => {
     expect(verification).toContain("--mode provider");
     expect(verification).toContain("--expected-publisher");
     expect(verification).toContain("--expected-certificate-sha256");
+  });
+
+  it("uses service credentials only on the DigiCert signer and keeps verification independent", () => {
+    const signer = workflowJobBlock(
+      source,
+      "sign-windows-formal",
+      "seal-windows-formal",
+    );
+    expect(signer).toContain("environment: windows-code-signing");
+    const cloud = namedStepBlock(
+      signer,
+      "Sign Windows candidate with DigiCert KeyLocker",
+    );
+    expect(cloud).toContain(
+      "vars.FYAGENT_WINDOWS_SIGNER_BACKEND == 'digicert-keylocker'",
+    );
+    expect(cloud).toContain(
+      "digicert/code-signing-software-trust-action@fae23a455ba4bde62b64fd7cb2f81ade788f5a95",
+    );
+    expect(cloud).toContain("simple-signing-mode: true");
+    expect(cloud).toContain("timestamp: true");
+    expect(cloud).toContain("zero-exit-code-on-failure: false");
+    expect(signer).toContain("Remove DigiCert client authentication file");
+    const sealer = workflowJobBlock(
+      source,
+      "seal-windows-formal",
+      "admit-offline-windows-formal",
+    );
+    expect(sealer).not.toContain("secrets.SM_");
+    expect(sealer).toContain("$env:PUBLIC_SIGNER_BACKEND -cne 'digicert-keylocker'");
   });
 
   it("routes successful builds and Windows sealing directly into asset verification without installer execution", () => {
