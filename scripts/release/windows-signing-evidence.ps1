@@ -1,6 +1,7 @@
 param(
   [Parameter(Mandatory = $true)]
-  [string]$ArtifactPath
+  [string]$ArtifactPath,
+  [switch]$RequireSignTool
 )
 
 $env:PSModulePath = "$PSHOME\Modules"
@@ -99,6 +100,36 @@ if (($artifact.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
 }
 if ($artifact.Length -le 0) {
   throw 'Authenticode evidence input must not be empty'
+}
+
+if ($RequireSignTool) {
+  $sdkBin = [IO.Path]::Combine(
+    [Environment]::GetEnvironmentVariable('ProgramFiles(x86)'),
+    'Windows Kits\10\bin'
+  )
+  $nativeArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+  $sdkDirectories = Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath $sdkBin -Directory |
+    Microsoft.PowerShell.Core\Where-Object { $_.Name -match '^10\.0\.\d+\.\d+$' } |
+    Microsoft.PowerShell.Utility\Sort-Object -Property { [version]$_.Name } -Descending
+  $signtool = $null
+  foreach ($sdk in $sdkDirectories) {
+    $path = [IO.Path]::Combine($sdk.FullName, $nativeArchitecture, 'signtool.exe')
+    if ([IO.File]::Exists($path)) {
+      $signtool = Microsoft.PowerShell.Management\Get-Item -LiteralPath $path -Force
+      break
+    }
+  }
+  if ($null -eq $signtool -or
+      ($signtool.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw 'Native Windows SDK SignTool is required to verify the Authenticode signature'
+  }
+  $PSNativeCommandUseErrorActionPreference = $false
+  $signToolOutput = & $signtool.FullName verify /pa /all /v /tw $resolvedArtifact 2>&1
+  $verificationExitCode = $LASTEXITCODE
+  [Console]::Error.WriteLine(($signToolOutput -join [Environment]::NewLine))
+  if ($verificationExitCode -ne 0) {
+    throw "SignTool verify /pa /all /v /tw failed with exit code $verificationExitCode"
+  }
 }
 
 $signature = Microsoft.PowerShell.Security\Get-AuthenticodeSignature `

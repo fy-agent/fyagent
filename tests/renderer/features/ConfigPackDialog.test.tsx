@@ -1,11 +1,12 @@
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import fixture from "../../fixtures/configPackDtoContract.v1.json";
 import { parseImportPreview } from "@/domain/config-pack";
 import type { ConfigPackPort } from "@/shared/features/config-pack";
@@ -67,6 +68,13 @@ async function importTab() {
   await screen.findByRole("button", { name: "选择 JSON 文件" });
 }
 describe("configuration pack dialog with fixture IPC", () => {
+  afterEach(async () => {
+    cleanup();
+    // Radix restores focus on the next timer tick after a dialog unmounts.
+    // Keep its jsdom window alive until that event has been dispatched.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+
   it("exports selected entries and does not treat picker cancel as success", async () => {
     const { port, fill, close } = setup();
     fireEvent.click(

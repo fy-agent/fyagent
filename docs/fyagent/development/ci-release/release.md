@@ -43,10 +43,33 @@ The published macOS installer is that DMG, with `FyAgent.app` and an
 `Applications` symlink so Finder can drag-install. The notarization helper
 submits the DMG once, then polls `notarytool info`
 until Apple returns a terminal status, instead of treating a
-`notarytool wait` timeout as rejection. The
-Release workflow does not launch the setup
-executables or run an install -> verify -> uninstall lifecycle; the retained
-lifecycle harness is a manual diagnostic, not a preflight or publication gate.
+`notarytool wait` timeout as rejection. The Release workflow does not launch the setup executables. The separate
+Windows installer lifecycle workflow runs the silent install and
+uninstall diagnostic on fresh matching Windows runners.
+
+## Windows acceptance and signed rehearsal
+
+1. Run **Release** on protected `main` with mode `preflight` and the full
+   candidate SHA. The native x64 and ARM64 jobs produce raw installers and
+   build metadata. Keep the run ID, attempt, and source SHA together.
+2. Run **Windows installer lifecycle** on `main` with that run ID, attempt,
+   and source SHA. Each native Windows job verifies its input archive and
+   source metadata, then records the silent lifecycle evidence. Use an
+   independent Windows client VM to test SmartScreen, UAC, version upgrades, and the first
+   interactive launch. Record each result against the installer SHA-256.
+3. Once the protected Certum signer is ready, run **Release** on protected
+   `main` with mode `signed-preflight` and that exact branch tip SHA. Both
+   signed installers must pass independent verification on matching GitHub-hosted
+   Windows runners, including SignTool chain and timestamp checks. This mode
+   produces workflow artifacts without publishing a GitHub Release.
+4. Use the formal tag workflow with a configured provider or an admitted,
+   independently sealed installer pair. The release requires valid signatures
+   for both Windows architectures. An authorized operator can start the
+   release from any machine. DigiCert KeyLocker uses service credentials on a
+   GitHub-hosted runner. The Certum backend uses a protected Windows signer
+   with an activated SimplySign session. See
+   [Windows release identity and recovery](../../../release/release-identity.md)
+   for cloud signing enrollment and verification.
 
 Release metadata retains real schema identities for download manifests,
 platform builds, aggregate build metadata, and Windows signing status. The

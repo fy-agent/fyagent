@@ -15,7 +15,7 @@
     ],
     [
       "scripts/release/windows-signing.mjs",
-      "fdd6d0590efb8e4eeb1f87f33c45d4057a9e8bab5d5ff82616a321c677d06a3a"
+      "1dccd56052ddde9e1ccdbe88d5d43b2a0f95c5c92de41cf015162f1d706c3325"
     ],
     [
       "scripts/tasks/host-native.mjs",
@@ -591,7 +591,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "dac51ce48415e77c32965f56985bb1ff1a273b76965a889cf6482d65ac795e09"
+      "663d3f2e6e8484d195ba260133a5968833b17f7abbe5e771be7eddb8eebfe46a"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

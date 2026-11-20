@@ -42,7 +42,7 @@ const ARTIFACT_SOURCE = "4f5e0543bae400e0c4447c10c164cd7e285f01df";
 const TAGGED_RELEASE = "b581222135e3db66e0e6e3fdba908662bc60dcda";
 const RELEASE_SOURCE = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const PRODUCT_JOB_FINGERPRINT =
-  "07dcad293ee63adeb07db1d91457b4e9ac11135f4c841271ed15ecc5eb4bbf1e";
+  "4a6cf3408ee3c566dc918fc6b82cab83f7dcbcd6632cf3fed0526a65b6d3ce1e";
 const BLOB = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 function sha256(bytes: Buffer): string {

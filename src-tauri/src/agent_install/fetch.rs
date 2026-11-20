@@ -34,10 +34,19 @@ use crate::services::external_agents::AgentCatalogId;
 const USER_AGENT: &str = "fyagent-agent-installer";
 pub(super) const MAX_STREAMED_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
+enum AllowlistedGetError {
+    Source(SourceResolveError),
+    Request(InstallerError),
+}
+
 pub async fn fetch_metadata_bytes(url: Url, hosts: &[&str]) -> Result<Vec<u8>, SourceResolveError> {
-    https_url_on_allowlist(&url, hosts)?;
     let transport = RuntimeInstallerTransport::new(InstallerTransportPurpose::Metadata, USER_AGENT);
-    let response = get_allowlisted(&transport, url, hosts, &NeverCancelled).await?;
+    let response = get_allowlisted(&transport, url, hosts, &NeverCancelled)
+        .await
+        .map_err(|error| match error {
+            AllowlistedGetError::Source(reason) => reason,
+            AllowlistedGetError::Request(_) => SourceResolveError::SchemaInvalid,
+        })?;
     collect_body(response, MAX_SOURCE_METADATA_BYTES, &NeverCancelled).await
 }
 
@@ -157,16 +166,27 @@ async fn fetch_artifact_to_job_with(
             drop(output);
             let _ =
                 job_directory.remove_artifact_if_present(&job_directory.part_path(artifact_kind));
-            let reason = download_source_reason(error);
-            log_install_diagnostic(&diagnostic_from_reason(
-                agent,
-                AgentActionJobStage::Downloading,
-                reason,
-                Some(job_directory.path()),
-                None,
-                Some("download request was rejected before the body"),
-            ));
-            return Err(reason);
+            return Err(match error {
+                AllowlistedGetError::Source(SourceResolveError::Cancelled) => {
+                    AgentReasonCode::Cancelled
+                }
+                AllowlistedGetError::Source(error) => {
+                    let reason = download_source_reason(error);
+                    log_install_diagnostic(&diagnostic_from_reason(
+                        agent,
+                        AgentActionJobStage::Downloading,
+                        reason,
+                        Some(job_directory.path()),
+                        None,
+                        Some("download request was rejected before the body"),
+                    ));
+                    reason
+                }
+                AllowlistedGetError::Request(error) => {
+                    log_package_installer_error(agent, job_directory, &error);
+                    agent_reason_for_package_preparation(&error)
+                }
+            });
         }
     };
     let result = persist_transport_response(
@@ -242,34 +262,49 @@ async fn get_allowlisted(
     initial: Url,
     hosts: &[&str],
     cancellation: &dyn Cancellation,
-) -> Result<TransportResponse, SourceResolveError> {
-    https_url_on_allowlist(&initial, hosts)?;
+) -> Result<TransportResponse, AllowlistedGetError> {
+    https_url_on_allowlist(&initial, hosts).map_err(AllowlistedGetError::Source)?;
     let mut current = initial;
     let mut followed = 0;
     loop {
         let response =
             match race_with_cancellation(transport.get(current.clone()), cancellation).await {
-                Err(_) => return Err(SourceResolveError::Cancelled),
-                Ok(Err(_)) => return Err(SourceResolveError::SchemaInvalid),
+                Err(_) => return Err(AllowlistedGetError::Source(SourceResolveError::Cancelled)),
+                Ok(Err(error)) => {
+                    return Err(AllowlistedGetError::Request(installer_from_transport(
+                        &error,
+                    )));
+                }
                 Ok(Ok(response)) => response,
             };
-        if !(300..=399).contains(&response.status) {
-            if !(200..=299).contains(&response.status) {
-                return Err(SourceResolveError::SchemaInvalid);
+        match response.status {
+            200..=299 => return Ok(response),
+            300..=399 => {}
+            status => {
+                return Err(AllowlistedGetError::Request(
+                    InstallerError::new(InstallerErrorCode::DownloadFailed)
+                        .with_http_status(status)
+                        .with_diagnostic_message(
+                            "download endpoint returned a non-success response",
+                        ),
+                ));
             }
-            return Ok(response);
         }
         let location = response
             .location
             .clone()
-            .ok_or(SourceResolveError::HostRejected)?;
+            .ok_or(AllowlistedGetError::Source(
+                SourceResolveError::HostRejected,
+            ))?;
         drop(response);
         current = resolve_redirect(&current, &location, followed)
-            .map_err(|_| SourceResolveError::HostRejected)?;
-        https_url_on_allowlist(&current, hosts)?;
+            .map_err(|_| AllowlistedGetError::Source(SourceResolveError::HostRejected))?;
+        https_url_on_allowlist(&current, hosts).map_err(AllowlistedGetError::Source)?;
         followed += 1;
         if followed > MAX_REDIRECTS {
-            return Err(SourceResolveError::HostRejected);
+            return Err(AllowlistedGetError::Source(
+                SourceResolveError::HostRejected,
+            ));
         }
     }
 }
@@ -314,13 +349,19 @@ mod tests {
     use uuid::Uuid;
 
     struct FakeTransport {
-        responses: Mutex<VecDeque<TransportResponse>>,
+        responses: Mutex<VecDeque<Result<TransportResponse, TransportError>>>,
     }
 
     impl FakeTransport {
         fn new(responses: impl IntoIterator<Item = TransportResponse>) -> Self {
             Self {
-                responses: Mutex::new(responses.into_iter().collect()),
+                responses: Mutex::new(responses.into_iter().map(Ok).collect()),
+            }
+        }
+
+        fn failing(error: TransportError) -> Self {
+            Self {
+                responses: Mutex::new(VecDeque::from([Err(error)])),
             }
         }
     }
@@ -332,7 +373,7 @@ mod tests {
                 .lock()
                 .unwrap()
                 .pop_front()
-                .ok_or_else(|| TransportError::non_retryable("unexpected request"));
+                .unwrap_or_else(|| Err(TransportError::non_retryable("unexpected request")));
             Box::pin(async move { response })
         }
     }
@@ -355,6 +396,51 @@ mod tests {
         TransportResponse {
             location: location.map(str::to_string),
             ..body_response(status, None, Vec::<Result<Bytes, TransportError>>::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn artifact_request_keeps_http_failure_and_timeout_details() {
+        let url = Url::parse("https://opencode.ai/setup.exe").unwrap();
+        for (transport, code, status, reason) in [
+            (
+                FakeTransport::new([body_response(503, None, [])]),
+                InstallerErrorCode::DownloadFailed,
+                Some(503),
+                AgentReasonCode::DownloadFailed,
+            ),
+            (
+                FakeTransport::failing(TransportError::timeout(
+                    "GET https://opencode.ai/setup.exe?token=mock-secret timed out",
+                )),
+                InstallerErrorCode::DownloadTimeout,
+                None,
+                AgentReasonCode::DownloadTimeout,
+            ),
+        ] {
+            let Err(AllowlistedGetError::Request(error)) = get_allowlisted(
+                &transport,
+                url.clone(),
+                OPENCODE_DOWNLOAD_HOSTS,
+                &NeverCancelled,
+            )
+            .await
+            else {
+                panic!("expected typed download failure");
+            };
+            assert_eq!(error.code(), code);
+            assert_eq!(error.to_dto().details.http_status, status);
+            assert_eq!(agent_reason_for_package_preparation(&error), reason);
+            let line = diagnostic_from_installer(
+                AgentCatalogId::OpenCode,
+                AgentActionJobStage::Downloading,
+                &error,
+                None,
+            )
+            .format_line();
+            let status = status.map_or_else(|| "-".to_string(), |status| status.to_string());
+            assert!(line.contains(&format!("http_status={status} ")));
+            assert!(!line.contains("mock-secret"));
         }
     }
 

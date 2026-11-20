@@ -364,9 +364,7 @@ describe("Windows signing adapter configuration", () => {
 });
 
 describe("Certum SimplySign adapter", () => {
-  function certumCredential(
-    change: Record<string, unknown> = {},
-  ): string {
+  function certumCredential(change: Record<string, unknown> = {}): string {
     return JSON.stringify({
       provider: "certum-simplysign",
       timestampUrl: CERTUM_SIMPLYSIGN_TIMESTAMP_URL,
@@ -489,7 +487,9 @@ describe("Certum SimplySign adapter", () => {
     expect(releaseWorkflow).toContain("FYAGENT_WINDOWS_SIGNING_MODE: unsigned");
     expect(releaseWorkflow).toContain(CERTUM_SIMPLYSIGN_ADAPTER_NAME);
     expect(releaseWorkflow).toContain("docs/release/release-identity.md");
-    expect(releaseWorkflow).not.toContain("vars.FYAGENT_WINDOWS_SIGNER_ADAPTER");
+    expect(releaseWorkflow).not.toContain(
+      "vars.FYAGENT_WINDOWS_SIGNER_ADAPTER",
+    );
   });
 
   it("fails closed before invoking a Certum adapter that has no credential", () => {
@@ -1093,7 +1093,7 @@ describe("fresh formal Windows verification and sealing", () => {
     const rawBytes = makePe();
     const signedBytes = appendAuthenticode(rawBytes);
     const input = formalPair(signedBytes);
-    let probeCount = 0;
+    const signToolRequirements: Array<boolean | undefined> = [];
     const record = verifySealedWindowsCandidate(
       {
         ...input,
@@ -1102,11 +1102,16 @@ describe("fresh formal Windows verification and sealing", () => {
         expectedCertificateSha256: signerCertificateSha256,
       },
       {
-        probeAuthenticode: () =>
-          probeCount++ === 0 ? unsignedEvidence() : signedEvidence(),
+        probeAuthenticode: (_asset, options) => {
+          signToolRequirements.push(options?.requireSignTool);
+          return options?.requireSignTool
+            ? signedEvidence()
+            : unsignedEvidence();
+        },
       },
     );
 
+    expect(signToolRequirements).toEqual([undefined, true]);
     expect(record).toEqual(
       fragment("x64", signedBytes, "signed", signedEvidence()),
     );

@@ -11,16 +11,17 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: preflight from trusted main, formal retry at an existing tag ref, or the narrow v0.4.15 formal repair from main
+        description: preflight, signed preflight from protected main, formal retry at an existing tag, or narrow v0.4.15 repair
         required: true
         default: preflight
         type: choice
         options:
           - preflight
+          - signed-preflight
           - formal
           - formal-repair
       source_sha:
-        description: Immutable 40-character candidate commit. Required for preflight and formal-repair. Leave empty for tag formal.
+        description: Immutable 40-character candidate commit. Required for preflight, signed-preflight and formal-repair. Leave empty for tag formal.
         required: false
         type: string
       release_tag:
@@ -53,6 +54,7 @@ jobs:
       workflow_sha: ${{ steps.contract.outputs.workflow_sha }}
       release_mode: ${{ steps.contract.outputs.release_mode }}
       repair: ${{ steps.contract.outputs.repair }}
+      windows_signing_rehearsal: ${{ steps.contract.outputs.windows_signing_rehearsal }}
       windows_byte_source: ${{ steps.contract.outputs.windows_byte_source }}
       generated_at: ${{ steps.contract.outputs.generated_at }}
       ci_run_id: ${{ steps.remote.outputs.ci_run_id }}
@@ -78,7 +80,7 @@ jobs:
           case "$GITHUB_EVENT_NAME" in
             workflow_dispatch)
               case "$DISPATCH_MODE" in
-                preflight)
+                preflight|signed-preflight)
                   [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
                     echo 'workflow_dispatch preflight source_sha must be a lowercase full 40-character commit SHA' >&2
                     exit 1
@@ -95,6 +97,12 @@ jobs:
                   [ "$GITHUB_REF_TYPE" = 'branch' ]
                   [ "$GITHUB_REF_NAME" = 'main' ]
                   [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ]
+                  if [ "$DISPATCH_MODE" = 'signed-preflight' ]; then
+                    [ "$GITHUB_REF_PROTECTED" = 'true' ] && [ "$DISPATCH_SOURCE_SHA" = "$GITHUB_WORKFLOW_SHA" ] || {
+                      echo 'Signed preflight requires the exact protected main workflow commit' >&2
+                      exit 1
+                    }
+                  fi
                   requested_source_sha="$DISPATCH_SOURCE_SHA"
                   requested_mode='preflight'
                   requested_repair='false'
@@ -198,6 +206,8 @@ jobs:
           REQUESTED_MODE: ${{ steps.request.outputs.requested_mode }}
           REQUESTED_REPAIR: ${{ steps.request.outputs.requested_repair }}
           REQUESTED_SOURCE_SHA: ${{ steps.request.outputs.requested_source_sha }}
+          WINDOWS_SIGNING_MODE: ${{ vars.FYAGENT_WINDOWS_SIGNING_MODE }}
+          WINDOWS_SIGNER_BACKEND: ${{ vars.FYAGENT_WINDOWS_SIGNER_BACKEND }}
         run: |
           set -euo pipefail
 
@@ -251,7 +261,7 @@ jobs:
           case "$GITHUB_EVENT_NAME" in
             workflow_dispatch)
               case "$DISPATCH_MODE" in
-                preflight)
+                preflight|signed-preflight)
                   [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
                     echo 'workflow_dispatch preflight source_sha must be a lowercase full 40-character commit SHA' >&2
                     exit 1
@@ -276,6 +286,12 @@ jobs:
                     echo 'workflow_dispatch preflight release_tag must be empty' >&2
                     exit 1
                   }
+                  if [ "$DISPATCH_MODE" = 'signed-preflight' ]; then
+                    [ "$GITHUB_REF_PROTECTED" = 'true' ] && [ "$source_sha" = "$workflow_commit" ] || {
+                      echo 'Signed preflight source must match the protected main checkout' >&2
+                      exit 1
+                    }
+                  fi
                   release_mode='preflight'
                   repair='false'
                   ;;
@@ -407,12 +423,42 @@ jobs:
               --github-output "$GITHUB_OUTPUT"
           fi
 
+          if [ "$release_mode" = 'formal' ] &&
+            ! grep -qx 'windows_byte_source=offline-sealed' "$GITHUB_OUTPUT" &&
+            [ "$WINDOWS_SIGNING_MODE" != 'provider' ]; then
+            echo 'Formal Windows release requires the configured signing provider or a sealed signed installer pair.' >&2
+            exit 1
+          fi
+
+          if [ "$DISPATCH_MODE" = 'signed-preflight' ] ||
+            { [ "$release_mode" = 'formal' ] &&
+              ! grep -qx 'windows_byte_source=offline-sealed' "$GITHUB_OUTPUT"; }; then
+            case "$WINDOWS_SIGNER_BACKEND" in
+              ''|certum-simplysign) ;;
+              digicert-keylocker)
+                if [ "$GITHUB_REF_PROTECTED" != 'true' ]; then
+                  echo 'DigiCert cloud signing requires protected main or a protected release tag.' >&2
+                  exit 1
+                fi
+                ;;
+              *)
+                echo 'Unsupported Windows signing backend.' >&2
+                exit 1
+                ;;
+            esac
+          fi
+
           {
             printf 'app_version=%s\n' "$app_version"
             printf 'release_tag=%s\n' "$release_tag"
             printf 'source_sha=%s\n' "$source_sha"
             printf 'workflow_sha=%s\n' "$workflow_commit"
             printf 'release_mode=%s\n' "$release_mode"
+            if [ "$DISPATCH_MODE" = 'signed-preflight' ]; then
+              printf 'windows_signing_rehearsal=true\n'
+            else
+              printf 'windows_signing_rehearsal=false\n'
+            fi
             printf 'repair=%s\n' "$repair"
             printf 'generated_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
           } >> "$GITHUB_OUTPUT"
@@ -425,7 +471,7 @@ jobs:
           RELEASE_APP_VERSION: ${{ steps.contract.outputs.app_version }}
           RELEASE_TAG: ${{ steps.contract.outputs.release_tag }}
           RELEASE_SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
-          RELEASE_DISPATCH_MODE: ${{ inputs.mode }}
+          RELEASE_DISPATCH_MODE: ${{ inputs.mode == 'signed-preflight' && 'preflight' || inputs.mode }}
           RELEASE_DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
@@ -733,7 +779,7 @@ jobs:
 
   prove-windows-preflight:
     name: Windows ${{ matrix.architecture }} unsigned preflight sealing
-    if: needs.eligibility.outputs.release_mode == 'preflight' && github.event_name == 'workflow_dispatch'
+    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal != 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && github.event_name == 'workflow_dispatch' }}"
     needs: [eligibility, pin-release-build-inputs]
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -886,20 +932,20 @@ jobs:
 
   sign-windows-formal:
     name: Windows ${{ matrix.architecture }} formal signing
-    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
+    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal == 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild')) }}"
     needs: [eligibility, pin-release-build-inputs]
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ fromJSON(vars.FYAGENT_WINDOWS_SIGNER_BACKEND == 'digicert-keylocker' && '["windows-2025"]' || '["self-hosted","Windows","X64","fyagent-simplysign"]') }}
+    environment: windows-code-signing
+    timeout-minutes: 15
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: fyagent-simplysign
-            target_group: windows-x64
+          - target_group: windows-x64
             architecture: x64
-          - runner: fyagent-simplysign
-            target_group: windows-arm64
+          - target_group: windows-arm64
             architecture: arm64
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
@@ -916,12 +962,15 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - name: Verify clean native signing runner
+      - name: Verify authorized Windows signing runner
         shell: pwsh
+        env:
+          EXPECTED_RUNNER_ENVIRONMENT: ${{ vars.FYAGENT_WINDOWS_SIGNER_BACKEND == 'digicert-keylocker' && 'github-hosted' || 'self-hosted' }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64') {
-            throw "Windows signing runner $env:RUNNER_OS/$env:RUNNER_ARCH is not the x64 SimplySign runner"
+          if ($env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or
+              $env:RUNNER_ENVIRONMENT -cne $env:EXPECTED_RUNNER_ENVIRONMENT) {
+            throw "Expected $env:EXPECTED_RUNNER_ENVIRONMENT Windows x64 signing runner, got $env:RUNNER_ENVIRONMENT $env:RUNNER_OS/$env:RUNNER_ARCH"
           }
           if ((git rev-parse HEAD) -cne $env:SOURCE_SHA) {
             throw 'Windows signing checkout is not the frozen source SHA'
@@ -986,17 +1035,18 @@ jobs:
       # Store that script's exact bytes in the adapter secret. This job writes them
       # to a temporary absolute .ps1 and assigns FYAGENT_WINDOWS_SIGNER_ADAPTER.
       # The adapter requires FYAGENT_WINDOWS_SIGNER_CREDENTIAL and an RFC 3161
-      # timestamp; a missing credential fails closed. The repository signing mode
-      # stays unsigned until that checklist is complete. Do not add a parallel
-      # Azure Trusted Signing workflow.
+      # timestamp. Until the provider is ready, formal publication requires
+      # independently sealed signed installers through offline admission.
       - name: Produce untrusted formal Windows candidate
+        if: vars.FYAGENT_WINDOWS_SIGNER_BACKEND != 'digicert-keylocker'
         shell: pwsh
         env:
+          WINDOWS_SIGNING_REHEARSAL: ${{ needs.eligibility.outputs.windows_signing_rehearsal }}
           SIGNING_MODE_CONFIG: ${{ vars.FYAGENT_WINDOWS_SIGNING_MODE }}
-          SIGNER_ADAPTER_BASE64_CONFIG: ${{ secrets.FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 }}
+          SIGNER_ADAPTER_BASE64_CONFIG: ${{ needs.eligibility.outputs.windows_signing_rehearsal != 'true' && secrets.FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 || '' }}
           SIGNER_PUBLISHER_CONFIG: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER }}
           SIGNER_CERTIFICATE_CONFIG: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256 }}
-          SIGNER_CREDENTIAL_CONFIG: ${{ secrets.FYAGENT_WINDOWS_SIGNER_CREDENTIAL }}
+          SIGNER_CREDENTIAL_CONFIG: ${{ needs.eligibility.outputs.windows_signing_rehearsal != 'true' && secrets.FYAGENT_WINDOWS_SIGNER_CREDENTIAL || '' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $managedSignerEnvironment = @(
@@ -1013,15 +1063,42 @@ jobs:
             'SIGNER_CERTIFICATE_CONFIG',
             'SIGNER_CREDENTIAL_CONFIG'
           )
+          if ($env:WINDOWS_SIGNING_REHEARSAL -ceq 'true') {
+            if ($env:GITHUB_REF -cne 'refs/heads/main' -or
+                $env:GITHUB_REF_PROTECTED -cne 'true' -or
+                $env:SOURCE_SHA -cne $env:GITHUB_SHA) {
+              throw 'Signed preflight left its protected main source boundary.'
+            }
+            $policy = Get-Content -LiteralPath 'docs/release/windows-offline-signing-policy.json' -Raw | ConvertFrom-Json
+            if ($policy.schema -cne 'fyagent-windows-offline-signing-policy/v1' -or
+                [string]$policy.certificateSha256 -cnotmatch '^[0-9a-f]{64}$') {
+              throw 'Signed preflight requires a valid pinned signing policy.'
+            }
+            $certificate = @(Get-ChildItem -Path Cert:\CurrentUser\My | Where-Object {
+              $_.HasPrivateKey -and
+                $_.GetCertHashString([Security.Cryptography.HashAlgorithmName]::SHA256).ToLowerInvariant() -ceq $policy.certificateSha256
+            })
+            if ($certificate.Count -ne 1) {
+              throw 'Signed preflight requires the pinned Certum key on the dedicated signing runner.'
+            }
+            $env:SIGNING_MODE_CONFIG = 'provider'
+            $env:SIGNER_ADAPTER_BASE64_CONFIG = [Convert]::ToBase64String(
+              [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath 'scripts/release/windows-signer-certum-simplysign.ps1').Path)
+            )
+            $env:SIGNER_PUBLISHER_CONFIG = $policy.publisher
+            $env:SIGNER_CERTIFICATE_CONFIG = $policy.certificateSha256
+            $env:SIGNER_CREDENTIAL_CONFIG = @{
+              provider = 'certum-simplysign'
+              timestampUrl = 'http://time.certum.pl'
+              certificateSha1 = $certificate[0].Thumbprint.ToLowerInvariant()
+            } | ConvertTo-Json -Compress
+          }
           $providerConfig = @(
             [string]$env:SIGNER_ADAPTER_BASE64_CONFIG,
             [string]$env:SIGNER_PUBLISHER_CONFIG,
             [string]$env:SIGNER_CERTIFICATE_CONFIG,
             [string]$env:SIGNER_CREDENTIAL_CONFIG
           )
-          $hasProviderConfig = @(
-            $providerConfig | Where-Object { $_ -cne '' }
-          ).Count -ne 0
           foreach ($name in $managedSignerEnvironment) {
             [Environment]::SetEnvironmentVariable($name, $null, 'Process')
           }
@@ -1029,61 +1106,46 @@ jobs:
           $adapterPath = $null
           $requiredProviderConfig = $null
           try {
-            switch -CaseSensitive ([string]$env:SIGNING_MODE_CONFIG) {
-              '' {
-                if ($hasProviderConfig) {
-                  throw 'FYAGENT_WINDOWS_SIGNING_MODE must select provider before defining signer configuration.'
-                }
-              }
-              'unsigned' {
-                if ($hasProviderConfig) {
-                  throw 'Signer configuration must be absent when FYAGENT_WINDOWS_SIGNING_MODE is unsigned.'
-                }
-                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNING_MODE', 'unsigned', 'Process')
-              }
-              'provider' {
-                $requiredProviderConfig = @(
-                  [string]$env:SIGNER_ADAPTER_BASE64_CONFIG,
-                  [string]$env:SIGNER_PUBLISHER_CONFIG,
-                  [string]$env:SIGNER_CERTIFICATE_CONFIG
-                )
-                if (@($requiredProviderConfig | Where-Object { $_ -ceq '' }).Count -ne 0) {
-                  throw 'Provider signing requires adapter bytes, expected publisher, and certificate SHA-256.'
-                }
-                try {
-                  $adapterBytes = [Convert]::FromBase64String($env:SIGNER_ADAPTER_BASE64_CONFIG)
-                } catch {
-                  throw 'FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 is not valid base64.'
-                }
-                if ($adapterBytes.Length -eq 0 -or $adapterBytes.Length -gt 49152) {
-                  throw 'FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 must decode to 1..49152 bytes.'
-                }
-                $adapterName = ".fyagent-windows-signer-$([Guid]::NewGuid().ToString('N')).ps1"
-                $adapterPath = [IO.Path]::Combine($env:RUNNER_TEMP, $adapterName)
-                $adapterStream = [IO.FileStream]::new(
-                  $adapterPath,
-                  [IO.FileMode]::CreateNew,
-                  [IO.FileAccess]::Write,
-                  [IO.FileShare]::None
-                )
-                try {
-                  $adapterStream.Write($adapterBytes, 0, $adapterBytes.Length)
-                  $adapterStream.Flush($true)
-                } finally {
-                  $adapterStream.Dispose()
-                  [Array]::Clear($adapterBytes, 0, $adapterBytes.Length)
-                }
-                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNING_MODE', 'provider', 'Process')
-                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNER_ADAPTER', $adapterPath, 'Process')
-                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER', $env:SIGNER_PUBLISHER_CONFIG, 'Process')
-                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256', $env:SIGNER_CERTIFICATE_CONFIG, 'Process')
-                if ([string]$env:SIGNER_CREDENTIAL_CONFIG -cne '') {
-                  [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNER_CREDENTIAL', $env:SIGNER_CREDENTIAL_CONFIG, 'Process')
-                }
-              }
-              default {
-                throw 'FYAGENT_WINDOWS_SIGNING_MODE must be unsigned or provider.'
-              }
+            if ($env:SIGNING_MODE_CONFIG -cne 'provider') {
+              throw 'Formal Windows signing requires provider mode.'
+            }
+            $requiredProviderConfig = @(
+              [string]$env:SIGNER_ADAPTER_BASE64_CONFIG,
+              [string]$env:SIGNER_PUBLISHER_CONFIG,
+              [string]$env:SIGNER_CERTIFICATE_CONFIG
+            )
+            if (@($requiredProviderConfig | Where-Object { $_ -ceq '' }).Count -ne 0) {
+              throw 'Provider signing requires adapter bytes, expected publisher, and certificate SHA-256.'
+            }
+            try {
+              $adapterBytes = [Convert]::FromBase64String($env:SIGNER_ADAPTER_BASE64_CONFIG)
+            } catch {
+              throw 'FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 is not valid base64.'
+            }
+            if ($adapterBytes.Length -eq 0 -or $adapterBytes.Length -gt 49152) {
+              throw 'FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 must decode to 1..49152 bytes.'
+            }
+            $adapterName = ".fyagent-windows-signer-$([Guid]::NewGuid().ToString('N')).ps1"
+            $adapterPath = [IO.Path]::Combine($env:RUNNER_TEMP, $adapterName)
+            $adapterStream = [IO.FileStream]::new(
+              $adapterPath,
+              [IO.FileMode]::CreateNew,
+              [IO.FileAccess]::Write,
+              [IO.FileShare]::None
+            )
+            try {
+              $adapterStream.Write($adapterBytes, 0, $adapterBytes.Length)
+              $adapterStream.Flush($true)
+            } finally {
+              $adapterStream.Dispose()
+              [Array]::Clear($adapterBytes, 0, $adapterBytes.Length)
+            }
+            [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNING_MODE', 'provider', 'Process')
+            [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNER_ADAPTER', $adapterPath, 'Process')
+            [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER', $env:SIGNER_PUBLISHER_CONFIG, 'Process')
+            [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256', $env:SIGNER_CERTIFICATE_CONFIG, 'Process')
+            if ([string]$env:SIGNER_CREDENTIAL_CONFIG -cne '') {
+              [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNER_CREDENTIAL', $env:SIGNER_CREDENTIAL_CONFIG, 'Process')
             }
             foreach ($name in $stagingSignerEnvironment) {
               [Environment]::SetEnvironmentVariable($name, $null, 'Process')
@@ -1115,6 +1177,62 @@ jobs:
             }
           }
 
+      - name: Stage DigiCert cloud signing client authentication
+        if: vars.FYAGENT_WINDOWS_SIGNER_BACKEND == 'digicert-keylocker'
+        shell: pwsh
+        env:
+          SM_HOST: ${{ vars.SM_HOST }}
+          SM_KEYPAIR_ALIAS: ${{ vars.SM_KEYPAIR_ALIAS }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('SM_HOST', 'SM_KEYPAIR_ALIAS', 'SM_API_KEY', 'SM_CLIENT_CERT_FILE_B64', 'SM_CLIENT_CERT_PASSWORD')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name, 'Process'))) {
+              throw "DigiCert cloud signing requires $name in the windows-code-signing environment."
+            }
+          }
+          $hostUri = [uri]$env:SM_HOST
+          if (-not $hostUri.IsAbsoluteUri -or $hostUri.Scheme -cne 'https') {
+            throw 'DigiCert SM_HOST must be an absolute HTTPS URL.'
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'fyagent-digicert-client-auth.p12'
+          $bytes = [Convert]::FromBase64String($env:SM_CLIENT_CERT_FILE_B64)
+          try {
+            $stream = [IO.FileStream]::new($certificatePath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+            try { $stream.Write($bytes, 0, $bytes.Length) }
+            finally { $stream.Dispose() }
+          } finally {
+            [Array]::Clear($bytes, 0, $bytes.Length)
+          }
+          "SM_CLIENT_CERT_FILE=$certificatePath" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Sign Windows candidate with DigiCert KeyLocker
+        if: vars.FYAGENT_WINDOWS_SIGNER_BACKEND == 'digicert-keylocker'
+        uses: digicert/code-signing-software-trust-action@fae23a455ba4bde62b64fd7cb2f81ade788f5a95 # v1.2.1
+        env:
+          SM_HOST: ${{ vars.SM_HOST }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+        with:
+          simple-signing-mode: true
+          keypair-alias: ${{ vars.SM_KEYPAIR_ALIAS }}
+          input: ${{ env.FYAGENT_WINDOWS_CANDIDATE }}
+          unsigned: true
+          timestamp: true
+          zero-exit-code-on-failure: false
+          use-github-caching-service: false
+
+      - name: Remove DigiCert client authentication file
+        if: always() && vars.FYAGENT_WINDOWS_SIGNER_BACKEND == 'digicert-keylocker'
+        shell: pwsh
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'fyagent-digicert-client-auth.p12'
+          if (Test-Path -LiteralPath $certificatePath -PathType Leaf) {
+            Remove-Item -LiteralPath $certificatePath -Force -ErrorAction Stop
+          }
+
       - name: Upload untrusted formal Windows candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1125,7 +1243,7 @@ jobs:
 
   seal-windows-formal:
     name: Windows ${{ matrix.architecture }} fresh formal verification and sealing
-    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
+    if: "${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs['sign-windows-formal'].result == 'success' && ((needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal == 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild')) }}"
     needs: [eligibility, pin-release-build-inputs, sign-windows-formal]
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -1143,7 +1261,9 @@ jobs:
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
       SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+      WINDOWS_SIGNING_REHEARSAL: ${{ needs.eligibility.outputs.windows_signing_rehearsal }}
       PUBLIC_SIGNING_MODE: ${{ vars.FYAGENT_WINDOWS_SIGNING_MODE }}
+      PUBLIC_SIGNER_BACKEND: ${{ vars.FYAGENT_WINDOWS_SIGNER_BACKEND }}
       PUBLIC_EXPECTED_PUBLISHER: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER }}
       PUBLIC_EXPECTED_CERTIFICATE_SHA256: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256 }}
     steps:
@@ -1234,33 +1354,26 @@ jobs:
             '--source-sha', $env:SOURCE_SHA,
             '--output', $env:FYAGENT_WINDOWS_SIGNING_FRAGMENT
           )
-          switch -CaseSensitive ([string]$env:PUBLIC_SIGNING_MODE) {
-            '' {
-              if ([string]$env:PUBLIC_EXPECTED_PUBLISHER -cne '' -or
-                  [string]$env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 -cne '') {
-                throw 'Absent Windows signing mode cannot define public provider policy.'
-              }
-              & node @commonArguments --mode unsigned
-            }
-            'unsigned' {
-              if ([string]$env:PUBLIC_EXPECTED_PUBLISHER -cne '' -or
-                  [string]$env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 -cne '') {
-                throw 'Unsigned Windows signing mode cannot define public provider policy.'
-              }
-              & node @commonArguments --mode unsigned
-            }
-            'provider' {
-              if ([string]$env:PUBLIC_EXPECTED_PUBLISHER -ceq '' -or
-                  [string]$env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 -ceq '') {
-                throw 'Provider mode requires complete public publisher and certificate policy.'
-              }
-              & node @commonArguments `
-                --mode provider `
-                --expected-publisher $env:PUBLIC_EXPECTED_PUBLISHER `
-                --expected-certificate-sha256 $env:PUBLIC_EXPECTED_CERTIFICATE_SHA256
-            }
-            default { throw 'FYAGENT_WINDOWS_SIGNING_MODE must be unsigned or provider.' }
+          if ($env:WINDOWS_SIGNING_REHEARSAL -ceq 'true') {
+            $env:PUBLIC_SIGNING_MODE = 'provider'
           }
+          if ($env:WINDOWS_SIGNING_REHEARSAL -ceq 'true' -and $env:PUBLIC_SIGNER_BACKEND -cne 'digicert-keylocker') {
+            $policy = Get-Content -LiteralPath 'docs/release/windows-offline-signing-policy.json' -Raw | ConvertFrom-Json
+            if ($policy.schema -cne 'fyagent-windows-offline-signing-policy/v1') {
+              throw 'Signed preflight requires the pinned signing policy.'
+            }
+            $env:PUBLIC_EXPECTED_PUBLISHER = $policy.publisher
+            $env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 = $policy.certificateSha256
+          }
+          if ($env:PUBLIC_SIGNING_MODE -cne 'provider' -or
+              [string]$env:PUBLIC_EXPECTED_PUBLISHER -ceq '' -or
+              [string]$env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 -ceq '') {
+            throw 'Formal Windows verification requires a configured signing provider and certificate policy.'
+          }
+          & node @commonArguments `
+            --mode provider `
+            --expected-publisher $env:PUBLIC_EXPECTED_PUBLISHER `
+            --expected-certificate-sha256 $env:PUBLIC_EXPECTED_CERTIFICATE_SHA256
           if ($LASTEXITCODE -ne 0) {
             throw "Independent Windows formal verification failed with exit code $LASTEXITCODE"
           }
@@ -1917,7 +2030,7 @@ jobs:
 
   verify-assets:
     name: Verify exact installers and generate evidence
-    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'offline-sealed' && needs['build-windows'].result == 'skipped' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'success')) }}
+    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal != 'true' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'skipped') || ((((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal') || (github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_signing_rehearsal == 'true')) && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'offline-sealed' && needs['build-windows'].result == 'skipped' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'success')) }}
     needs:
       [
         eligibility,
@@ -1936,6 +2049,7 @@ jobs:
       SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
       TRUSTED_WORKFLOW_SHA: ${{ needs.eligibility.outputs.workflow_sha }}
       RELEASE_MODE: ${{ needs.eligibility.outputs.release_mode }}
+      WINDOWS_SIGNING_REHEARSAL: ${{ needs.eligibility.outputs.windows_signing_rehearsal }}
       GENERATED_AT: ${{ needs.eligibility.outputs.generated_at }}
       EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
       EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
@@ -2022,6 +2136,10 @@ jobs:
                 --version "$APP_VERSION" \
                 --source-sha "$SOURCE_SHA" \
                 --output verified-subjects/signing-status.json
+              if [ "$RELEASE_MODE" = formal ] || [ "$WINDOWS_SIGNING_REHEARSAL" = true ]; then
+                jq -e '.mode == "signed" and all(.assets[]; .signature.status == "Valid")' \
+                  verified-subjects/signing-status.json >/dev/null
+              fi
               node scripts/release/generate-build-metadata.mjs \
                 platform-metadata "$APP_VERSION" "$RELEASE_TAG" "$SOURCE_SHA" \
                 "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY_ID" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
@@ -2377,7 +2495,8 @@ jobs:
               jq -e --arg version "$APP_VERSION" --arg source "$SOURCE_SHA" '
                 .schema == "fyagent-windows-signing-status/v1" and
                 .product == "FyAgent" and .version == $version and .sourceSha == $source and
-                (.mode == "signed" or .mode == "unsigned") and
+                .mode == "signed" and
+                (([.assets[].signature.status] | unique) == ["Valid"]) and
                 (has("offlineAdmission") | not) and
                 (([.assets[].architecture] | sort) == ["arm64", "x64"]) and
                 (([.assets[].name] | sort) == ([

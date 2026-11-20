@@ -4,19 +4,30 @@
 身份行仍是占位时，仓库变量 `FYAGENT_WINDOWS_SIGNING_MODE` 必须保持 `unsigned`。
 不要因为本机已经能连上 SimplySign，就把默认模式改成 `provider`。
 
-Windows 正式签名路径是 **Certum／SimplySign**，沿用现有 adapter 边界：
+当前生产证书的签名路径是 **Certum／SimplySign**，沿用现有 adapter 边界：
 
 `prove-windows-preflight`（unsigned）与 `sign-windows-formal` → `seal-windows-formal` 分开。
 不另开 Azure Trusted Signing 或第二条流水线。adapter 文件是
 `scripts/release/windows-signer-certum-simplysign.ps1`。
 
-x64 与 arm64 两个安装包都在标签为 `fyagent-simplysign` 的同一台 x64 runner 上签名。
-这台机器保持 SimplySign 登录。`signtool` 按证书指纹选择证书，不要求 runner 架构和安装包架构相同。
+Release 将 x64 与 arm64 安装包交给匹配 `self-hosted`、`Windows`、`X64` 和 `fyagent-simplysign` 的受控签名 runner。GitHub 按标签分派作业，两个包可以由不同节点签名。
+每个节点使用同一个获授权的 Certum 账户和固定证书，保持 SimplySign 会话可用，并将 Windows SDK SignTool 加入 runner 的 PATH。省略凭据配置中的 `signtoolPath`，即可沿用各节点的 SDK 安装路径。
 复核签名的 seal 作业仍在 GitHub 的 `windows-2025` 与 `windows-11-vs2026-arm` 上运行，不使用私钥。
 
 本机 AIMaster 上的 SimplySign／Certum 操作只作为参考。它不是 CI 正式证据。
 正式证据只来自 `fy-agent/fyagent` 的 Release 工作流：x64 与 arm64 各自签名、各自在干净 runner 上复验。
 验收命令是 `signtool verify /pa /all /v /tw`，只接受退出码 0。缺 publisher、证书 SHA-256、RFC 3161 时间戳、证书链或安装包 SHA-256 时，现有 seal 逻辑 fail-closed。
+
+## 无人值守签名迁移
+
+DigiCert KeyLocker 可在 GitHub 托管 Windows runner 上签名。发布者只需触发现有发布入口。服务账号调用云端签名密钥，日常发布无需启动 SimplySign 或输入手机验证码。
+
+1. 以公司身份开通 KeyLocker，申请新的 Authenticode 证书，并启用 DigiCert Binary Signing 的 simple signing。核验新证书的发布者、原始证书字节的 SHA-256 和到期日。在 DigiCert 配置仅有发布专用密钥签名权限的服务账号。
+2. 为 `windows-code-signing` GitHub environment 配置受保护的 `main` 和发布标签。发布标签需要 GitHub 保护规则。将 `SM_HOST`、`SM_KEYPAIR_ALIAS` 配置为 environment 变量，将 `SM_API_KEY`、`SM_CLIENT_CERT_FILE_B64`、`SM_CLIENT_CERT_PASSWORD` 配置为 environment secrets。客户端认证证书用于服务登录，代码签名私钥由 KeyLocker 保管。为实现日常无人值守，部署策略通过受保护 ref 控制，不在 environment 设置每次发布的人工审批。
+3. 配置仓库变量 `FYAGENT_WINDOWS_SIGNER_BACKEND=digicert-keylocker` 以及新证书的 `FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER` 和 `FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256`。在 GitHub 上从受保护的 `main` 跑一次 `signed-preflight`。保留 x64 和 ARM64 的独立签名验证结果。
+4. 演练通过并更新下方发布身份记录后，将 `FYAGENT_WINDOWS_SIGNING_MODE` 切换到 `provider`。由另一台设备发起下一次正式发布并复核对应 GitHub run 的签名证据。证书或服务账号凭据轮换时重新执行签名预检。
+
+[GitHub Actions 的 DigiCert Binary Signing 官方文档](https://docs.digicert.com/en/digicert-keylocker/ci-cd-integrations-and-deployment-pipelines/plugins/github/binary-signing-using-github-actions.html)
 
 ## 身份表
 
@@ -72,7 +83,7 @@ x64 与 arm64 两个安装包都在标签为 `fyagent-simplysign` 的同一台 x
 - `certificateSha1`：给 `signtool /sha1` 选择 SimplySign 证书，40 位小写十六进制。
 - `FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256`：证书原始字节的 SHA-256，64 位小写十六进制。seal 用它核对签名者，不把它当作 `/sha1` 参数。
 
-## 打开 provider 之前的检查清单
+## 打开 Certum provider 之前的检查清单
 
 全部满足之前，`FYAGENT_WINDOWS_SIGNING_MODE` 保持 `unsigned`：
 
@@ -88,7 +99,8 @@ x64 与 arm64 两个安装包都在标签为 `fyagent-simplysign` 的同一台 x
 
 ## 离线签名交接
 
-provider 模式把保持 SimplySign 登录的 AIMaster 注册为 `fyagent-simplysign`。Release 把 x64 和 arm64 的签名作业都派给它，不需要每次在这台电脑上手工下载和回传。离线交接仍然不把 PIN 放进 GitHub。正式 Release 运行上传的
+可以从有发布权限的设备发起 Release。更换签名节点时，在独立 Windows x64 主机或 VM 中配置同一张 SimplySign 云证书，使用签名账户的会话启动 runner，并先完成 protected main 的 `signed-preflight`。确认两个架构都通过独立复验后，再将旧节点下线。
+签名节点的 runner group 只应允许受信任的发布工作流与 ref。公开仓库无法限制工作流访问时，使用离线交接流程，由获授权的 Windows 签名主机处理安装包。离线交接不把 PIN 放进 GitHub。Release 预检上传的
 `raw-windows-x64` 和 `raw-windows-arm64` 是唯一原始包。本机用
 `scripts/release/windows-signer-certum-simplysign.ps1` 签名后，把
 `signing-return.json` 和两个已签名安装包做成一个不含其他文件的提交，再从
@@ -104,7 +116,7 @@ provider 模式把保持 SimplySign 登录的 AIMaster 注册为 `fyagent-simply
 
 ## 正式发布收回已密封的离线包
 
-当发布提交包含 `docs/release/windows-formal-offline-admission.json`，且其中 `version` 等于该提交的稳定版本时，正式 tag 运行必须收回清单点名的那一对已密封 Windows 安装包。预检仍重新构建未签名包，不发布。清单缺失时，正式发布仍走原来的 `rebuild` 路径。
+当发布提交包含 `docs/release/windows-formal-offline-admission.json`，且其中 `version` 等于该提交的稳定版本时，正式 tag 运行必须收回清单点名的那一对已密封 Windows 安装包。普通预检会构建未签名包供测试。清单缺失时，正式发布的 `rebuild` 路径要求启用 provider 且两个架构均通过签名验证。
 
 收回时全部成立才继续，任何一条失败都停止，不会改发未签名 Windows，也不会 `make_latest`：
 
