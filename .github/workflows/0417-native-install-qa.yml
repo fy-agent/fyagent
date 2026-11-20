@@ -1,0 +1,63 @@
+name: FyAgent 0.4.17 native install and upgrade
+
+on:
+  push:
+    branches: [qa/0417-native-install-82d6204]
+    paths:
+      - .github/workflows/0417-native-install-qa.yml
+      - scripts/release/0417-native-install-qa.ps1
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  install-upgrade:
+    name: Install, upgrade, uninstall (${{ matrix.arch }})
+    if: github.repository == 'fy-agent/fyagent'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-2025
+            candidate_sha256: b5ddcb76285207fef3e05a8af8845e5eeab2ca12367a4dc11083ff61905b7b66
+            previous_sha256: 1d4cddd87e89411b37c802b84a040001ef304e892b05a227b2e0c0ec1393ef10
+          - arch: arm64
+            runner: windows-11-vs2026-arm
+            candidate_sha256: 07750e500138a27ba6e4eea02cd1d72ff7a3bf13c0bb3610bf914acbe078b445
+            previous_sha256: ab73a5e2bfa5695d444c108d59460ad719c54f318085fa7962cab24a130c9c68
+    env:
+      PACKAGE_ARCH: ${{ matrix.arch }}
+      CANDIDATE_SHA256: ${{ matrix.candidate_sha256 }}
+      PREVIOUS_SHA256: ${{ matrix.previous_sha256 }}
+    steps:
+      - name: Identify the disposable runner
+        env:
+          QA_RUNNER_KIND: ${{ runner.environment }}
+        run: |
+          if ($env:QA_RUNNER_KIND -cne 'github-hosted') { throw 'A disposable GitHub-hosted runner is required' }
+          "QA_RUNNER_KIND=$env:QA_RUNNER_KIND" >> $env:GITHUB_ENV
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: raw-windows-${{ matrix.arch }}
+          path: candidate
+          run-id: 44733606638
+          github-token: ${{ github.token }}
+      - name: Check the two installer hashes
+        run: ./scripts/release/0417-native-install-qa.ps1 -Step Prepare
+      - name: Clean install the candidate
+        run: ./scripts/release/0417-native-install-qa.ps1 -Step CleanInstall
+      - name: Uninstall and check preserved files
+        run: ./scripts/release/0417-native-install-qa.ps1 -Step Uninstall
+      - name: Install stable 0.4.16 and verify it
+        run: ./scripts/release/0417-native-install-qa.ps1 -Step InstallPrevious
+      - name: Upgrade to 0.4.17 in place
+        run: ./scripts/release/0417-native-install-qa.ps1 -Step Upgrade
+      - name: Uninstall the upgrade and check preserved files
+        run: ./scripts/release/0417-native-install-qa.ps1 -Step Uninstall
