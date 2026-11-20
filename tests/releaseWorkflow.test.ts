@@ -2016,7 +2016,8 @@ describe("FyAgent release workflow", () => {
 
   it("uses read-only defaults and isolates attestation and publication writes", () => {
     expect(source).toContain("permissions:\n  contents: read");
-    expect(source).not.toContain("environment:");
+    expect(source.match(/^    environment: windows-code-signing$/gmu)).toHaveLength(1);
+    expect(source.match(/^    environment:/gmu)).toHaveLength(1);
     expect(source).toContain("artifact-metadata: write");
     expect(source).toContain("attestations: write");
     expect(source).toContain("id-token: write");
