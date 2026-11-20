@@ -41,12 +41,11 @@ $allowedFileSddl = @(
   'O:BAD:PAI(A;;FA;;;BA)(A;;FA;;;SY)'
 )
 
-# Reviewed 2026-08-09 from the fixed Microsoft WebView2 fwlink below. Leaf
-# rotations are fail-closed and require an explicit reviewed addition; the
-# longer-lived PCA public-key pin prevents a CurrentUser trust-root injection
-# from manufacturing an O=Microsoft Corporation signer with the same EKU.
+# Leaf certificates reviewed from the fixed Microsoft WebView2 fwlink below.
+# Both chain to the pinned Microsoft Code Signing PCA 2024 key.
 $allowedSignerCertificateSha256 = @(
-  'CB97E8E85E8E9321FB2646E9574EFD17669B3B0581D24262AC7C8A227433A244'
+  'CB97E8E85E8E9321FB2646E9574EFD17669B3B0581D24262AC7C8A227433A244', # 2026-08-09
+  'E0113ED8F5AEBC48D48E53F699129D14DDEDCFCAE489ABA7DB411ED0838A14C0'  # 2026-11-20
 )
 $allowedCodeSigningPcaSpkiSha256 = @(
   '50E824592CAA59C7DB9615D676738C7E4EEE522622440C4C2152D0668D68C6D9'
