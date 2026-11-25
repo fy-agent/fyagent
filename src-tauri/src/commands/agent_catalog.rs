@@ -1561,6 +1561,8 @@ mod tests {
             "allow-change-plan",
             "allow-agent-install-readiness",
             "allow-session-migration",
+            "allow-model-management-loop",
+            "allow-workspace-transfer",
         ] {
             assert_eq!(
                 permissions
@@ -1613,6 +1615,8 @@ mod tests {
         for manifest in [
             include_str!("../../permissions/config-pack.toml"),
             include_str!("../../permissions/session-migration.toml"),
+            include_str!("../../permissions/model-management-loop.toml"),
+            include_str!("../../permissions/workspace-transfer.toml"),
         ] {
             let commands = allowed_commands(manifest);
             assert!(allowed.is_disjoint(&commands));

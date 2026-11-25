@@ -77,7 +77,7 @@ function registeredCommands(): Set<string> {
   return commands;
 }
 
-function activeAclCommands(): Set<string> {
+function activeAclPermissions(): Map<string, Set<string>> {
   const capability = JSON.parse(
     readFileSync(join(root, "src-tauri/capabilities/default.json"), "utf8"),
   ) as {
@@ -105,14 +105,24 @@ function activeAclCommands(): Set<string> {
     }
   }
 
-  const allowed = new Set<string>();
+  const perPermission = new Map<string, Set<string>>();
   for (const identifier of activeAppPermissions) {
     const permission = definitions.get(identifier);
     expect(permission, `missing app permission ${identifier}`).toBeDefined();
+    const commands = new Set<string>();
     for (const command of permission?.commands.allow ?? [])
-      allowed.add(command);
+      commands.add(command);
     for (const command of permission?.commands.deny ?? [])
-      allowed.delete(command);
+      commands.delete(command);
+    perPermission.set(identifier, commands);
+  }
+  return perPermission;
+}
+
+function activeAclCommands(): Set<string> {
+  const allowed = new Set<string>();
+  for (const commands of activeAclPermissions().values()) {
+    for (const command of commands) allowed.add(command);
   }
   return allowed;
 }
@@ -243,6 +253,37 @@ describe("Native ACL contract", () => {
       ),
     );
     expect(forbidden).toEqual([]);
+  });
+
+  it("ratchets legacy ACL growth and keeps scoped permissions 100% renderer-used", () => {
+    const renderer = rendererInvokeCommands();
+    const permissions = activeAclPermissions();
+    const legacy = permissions.get("allow-legacy-application-commands");
+    expect(legacy).toBeDefined();
+    // Ratchet: new features must declare a scoped permission file instead of expanding legacy.
+    expect(legacy!.size).toBeLessThanOrEqual(337);
+
+    const modelLoop = permissions.get("allow-model-management-loop");
+    const workspaceTransfer = permissions.get("allow-workspace-transfer");
+    expect(modelLoop?.size).toBe(16);
+    expect(workspaceTransfer?.size).toBe(10);
+
+    for (const [identifier, commands] of permissions.entries()) {
+      if (identifier === "allow-legacy-application-commands") continue;
+      const unused = [...commands].filter(
+        (command) => !renderer.commands.has(command),
+      );
+      expect(unused, `unused commands in scoped permission ${identifier}`).toEqual(
+        [],
+      );
+      const overlappingLegacy = [...commands].filter((command) =>
+        legacy!.has(command),
+      );
+      expect(
+        overlappingLegacy,
+        `scoped permission ${identifier} overlaps legacy`,
+      ).toEqual([]);
+    }
   });
 });
 
