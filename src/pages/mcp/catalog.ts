@@ -1054,6 +1054,43 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     }),
   }),
   catalogItem({
+    id: "keenable",
+    name: "Keenable 搜索",
+    description:
+      "免 Key 远程网页搜索与页面正文 Markdown 抓取，无需本地运行时。",
+    categories: ["basics"],
+    tags: ["搜索", "网页抓取", "HTTP"],
+    publisher: "Keenable",
+    providerGroup: "general",
+    provenance: "official",
+    maturity: "verify",
+    homepage: "https://keenable.ai",
+    docs: "https://docs.keenable.ai/mcp-server",
+    requirements: ["none"],
+    authLabel: "API Key（可选）",
+    privilege: "read",
+    risk: "搜索查询词与抓取 URL 会发送到 Keenable 远程服务；免 Key 限额按 IP 计算。",
+    fields: [
+      {
+        key: "apiKey",
+        label: "API Key",
+        type: "password",
+        help: "留空即可免 Key 使用；填写后可提升调用限额。",
+      },
+    ],
+    buildSpec: (values) => {
+      const apiKey = optionalText(values, "apiKey");
+      return {
+        type: "http",
+        url: "https://api.keenable.ai/mcp",
+        headers: {
+          "X-Keenable-Title": "FyAgent",
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+      };
+    },
+  }),
+  catalogItem({
     id: "cloudbase",
     name: "腾讯云 CloudBase MCP",
     description: "小程序与 Web 应用的云开发、数据库和部署。",
