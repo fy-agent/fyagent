@@ -660,6 +660,10 @@ export function PresetBatchDrawer({
             aria-label="即将改动的配置文件预览"
           >
             <strong>即将改动的配置文件</strong>
+            <p className="fy-preset-batch-paths">
+              仅更新所选软件的模型地址、密钥与模型
+              ID，写入前自动备份；绝不改动聊天记录、MCP、Skills、官方订阅登录及其他手改字段。
+            </p>
             <ul>
               {previewItems.map((item) => (
                 <li key={item.target}>

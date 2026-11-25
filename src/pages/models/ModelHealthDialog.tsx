@@ -765,6 +765,10 @@ export function ModelHealthDialog({
           {previewItems && !outcomes ? (
             <section className="fy-preset-batch-preview" aria-label="克隆预览">
               <strong>即将改动的配置文件</strong>
+              <p className="fy-preset-batch-paths">
+                仅同步模型地址、密钥与模型
+                ID，写入前自动备份；绝不改动聊天记录、MCP、Skills、官方订阅登录及其他手改字段。
+              </p>
               <ul>
                 {previewItems.map((item) => (
                   <li key={item.target}>
@@ -876,6 +880,10 @@ export function ModelHealthDialog({
           {previewItems && !outcomes ? (
             <section className="fy-preset-batch-preview" aria-label="轮换预览">
               <strong>即将更新密钥的配置文件</strong>
+              <p className="fy-preset-batch-paths">
+                仅替换对应供应商的 API
+                Key，完整保留原有模型、服务地址、聊天记录及其他手改字段，写入前自动备份。
+              </p>
               <ul>
                 {previewItems.map((item) => (
                   <li key={item.target}>

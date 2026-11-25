@@ -783,4 +783,102 @@ mod tests {
             None => std::env::remove_var("FYAGENT_TEST_HOME"),
         }
     }
+
+    #[test]
+    #[serial_test::serial]
+    fn batch_setup_preserves_unrelated_user_fields_in_opencode_and_omp() {
+        // 1) OpenCode: pre-existing custom fields and an unrelated user provider must survive batch sync.
+        let temp = tempfile::tempdir().unwrap();
+        let prev_home = std::env::var_os("FYAGENT_TEST_HOME");
+        let prev_settings = crate::settings::get_settings();
+        std::env::set_var("FYAGENT_TEST_HOME", temp.path());
+        crate::settings::replace_settings_in_memory_for_test(Default::default());
+
+        let opencode_dir = temp.path().join(".config").join("opencode");
+        std::fs::create_dir_all(&opencode_dir).unwrap();
+        let opencode_path = opencode_dir.join("opencode.json");
+        std::fs::write(
+            &opencode_path,
+            serde_json::json!({
+                "$schema": "https://opencode.ai/config.json",
+                "theme": "ocean-custom",
+                "userManualFlag": true,
+                "provider": {
+                    "my-local-ollama": {
+                        "npm": "@ai-sdk/openai-compatible",
+                        "name": "Local Ollama",
+                        "options": { "baseURL": "http://127.0.0.1:11434/v1" },
+                        "models": { "qwen-local": { "name": "qwen-local" } }
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let oc_spec = BatchSetupTargetSpec {
+            target: BatchSetupTargetId::Opencode,
+            provider_id: "deepseek".to_string(),
+            provider_name: "DeepSeek".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model_id: "deepseek-v4-pro".to_string(),
+            extra_model_ids: vec![],
+            protocol: Some(ApiProtocol::Chat),
+        };
+        let oc_outcome = apply_opencode(&oc_spec, "sk-preserve-fields-oc");
+        assert_eq!(oc_outcome.status, BatchTargetStatus::Applied);
+
+        let oc_after: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&opencode_path).unwrap()).unwrap();
+        assert_eq!(oc_after["theme"], "ocean-custom");
+        assert_eq!(oc_after["userManualFlag"], true);
+        assert_eq!(
+            oc_after["provider"]["my-local-ollama"]["name"],
+            "Local Ollama"
+        );
+        assert!(oc_after["provider"]["deepseek"].is_object());
+
+        crate::settings::replace_settings_in_memory_for_test(prev_settings);
+        match prev_home {
+            Some(v) => std::env::set_var("FYAGENT_TEST_HOME", v),
+            None => std::env::remove_var("FYAGENT_TEST_HOME"),
+        }
+
+        // 2) omp: pre-existing comments, unrelated provider, and custom config keys must survive batch sync.
+        let _env = crate::omp_config::test_support::TestOmpEnv::new();
+        let initial_omp = omp_config::read_omp_config().unwrap();
+        let models_path = std::path::PathBuf::from(&initial_omp.models_path);
+        let config_path = std::path::PathBuf::from(&initial_omp.config_path);
+        std::fs::create_dir_all(models_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &models_path,
+            "# keep-my-custom-comment\nproviders:\n  hand-edited:\n    baseUrl: https://hand.example/v1\n    api: openai-completions\n    models:\n      - id: custom-hand-model\n",
+        )
+        .unwrap();
+        std::fs::write(
+            &config_path,
+            "# keep-config-comment\ntelemetry: false\nmodelRoles:\n  default: hand-edited/custom-hand-model\n",
+        )
+        .unwrap();
+
+        let omp_spec = BatchSetupTargetSpec {
+            target: BatchSetupTargetId::Omp,
+            provider_id: "deepseek".to_string(),
+            provider_name: "DeepSeek".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model_id: "deepseek-v4-pro".to_string(),
+            extra_model_ids: vec![],
+            protocol: Some(ApiProtocol::Chat),
+        };
+        let omp_outcome = apply_omp(&omp_spec, "sk-preserve-fields-omp");
+        assert_eq!(omp_outcome.status, BatchTargetStatus::Applied);
+
+        let models_raw = std::fs::read_to_string(&models_path).unwrap();
+        let config_raw = std::fs::read_to_string(&config_path).unwrap();
+        assert!(models_raw.contains("# keep-my-custom-comment"));
+        assert!(models_raw.contains("hand-edited"));
+        assert!(models_raw.contains("custom-hand-model"));
+        assert!(config_raw.contains("# keep-config-comment"));
+        assert!(config_raw.contains("telemetry: false"));
+    }
 }
