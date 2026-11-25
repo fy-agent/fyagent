@@ -1636,6 +1636,14 @@ mod tests {
         assert!(registered.contains("bind_managed_proxy_provider"));
         assert!(registered.contains("bind_opencode_managed_proxy"));
         assert!(!registered.contains("get_agent_health"));
+        for retired in [
+            "get_global_proxy_config",
+            "update_global_proxy_config",
+            "get_proxy_access_key",
+            "regenerate_proxy_access_key",
+        ] {
+            assert!(!registered.contains(retired));
+        }
         assert!(registered.contains("get_first_use_guide_state"));
         assert!(registered.contains("dismiss_first_use_guide"));
         for command in [
@@ -1664,7 +1672,7 @@ mod tests {
         ] {
             assert!(registered.contains(command));
         }
-        assert_eq!(registered.len(), 428, "review intentional handler changes");
+        assert_eq!(registered.len(), 424, "review intentional handler changes");
         assert_eq!(
             allowed, registered,
             "every registered application command must be granted exactly once while an app ACL manifest exists"

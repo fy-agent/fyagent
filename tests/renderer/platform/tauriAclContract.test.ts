@@ -124,12 +124,18 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(189);
-    for (const command of [
+    expect(renderer.commands.size).toBe(185);
+    for (const retiredCommand of [
       "get_global_proxy_config",
       "update_global_proxy_config",
       "get_proxy_access_key",
       "regenerate_proxy_access_key",
+    ]) {
+      expect(renderer.commands.has(retiredCommand)).toBe(false);
+      expect(registered.has(retiredCommand)).toBe(false);
+      expect(allowed.has(retiredCommand)).toBe(false);
+    }
+    for (const command of [
       "get_providers",
       "add_provider",
       "update_provider",
