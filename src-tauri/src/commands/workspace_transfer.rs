@@ -8,7 +8,9 @@ use crate::{
     services::{
         remote_push::{
             self,
+            profiles::{SaveSshPushProfileRequest, SshPushProfile},
             ssh_config::{SshHostEntry, SshTargetSpec},
+            subsystem::{WslEnvironmentStatus, WslSyncRequest},
             transport::{RemotePushApplyResult, SshConnectionTestResult},
             RemotePushPreviewResult, RemotePushRequest,
         },
@@ -161,4 +163,75 @@ pub(crate) async fn apply_ssh_config_push(
     })
     .await
     .map_err(|e| format!("执行 SSH 配置推送失败：{e}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn list_ssh_push_profiles(
+    state: State<'_, AppState>,
+) -> Result<Vec<SshPushProfile>, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_push::profiles::list_ssh_push_profiles(&state.db)
+    })
+    .await
+    .map_err(|e| format!("读取常用 SSH 主机失败：{e}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn save_ssh_push_profile(
+    state: State<'_, AppState>,
+    request: SaveSshPushProfileRequest,
+) -> Result<SshPushProfile, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_push::profiles::save_ssh_push_profile(&state.db, request)
+    })
+    .await
+    .map_err(|e| format!("保存常用 SSH 主机失败：{e}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn delete_ssh_push_profile(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<bool, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_push::profiles::delete_ssh_push_profile(&state.db, &id)
+    })
+    .await
+    .map_err(|e| format!("删除常用 SSH 主机失败：{e}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn list_wsl_distros() -> Result<WslEnvironmentStatus, String> {
+    tauri::async_runtime::spawn_blocking(remote_push::subsystem::list_wsl_distros)
+        .await
+        .map_err(|e| format!("检测 WSL 发行版失败：{e}"))
+}
+
+#[tauri::command]
+pub(crate) async fn preview_wsl_config_sync(
+    state: State<'_, AppState>,
+    request: WslSyncRequest,
+) -> Result<RemotePushPreviewResult, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_push::subsystem::preview_wsl_config_sync(&state, request)
+    })
+    .await
+    .map_err(|e| format!("预览 WSL 同步清单失败：{e}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn apply_wsl_config_sync(
+    state: State<'_, AppState>,
+    request: WslSyncRequest,
+) -> Result<RemotePushApplyResult, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_push::subsystem::apply_wsl_config_sync(&state, request)
+    })
+    .await
+    .map_err(|e| format!("执行 WSL 配置同步失败：{e}"))?
 }

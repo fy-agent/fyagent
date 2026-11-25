@@ -1,30 +1,37 @@
-//! Agentless SSH remote configuration push service.
+//! Agentless SSH remote configuration push and Windows-host WSL sync service.
 //!
 //! Renders local configurations into ready-to-use files and pushes them over
-//! standard SSH stdin with automatic remote backups and atomic renames.
-//! Requires ZERO FyAgent installation on the remote host.
+//! standard POSIX shell stdin with automatic backups and atomic renames.
+//! Requires ZERO FyAgent installation on the target host or distribution.
 
+pub mod profiles;
 pub mod render;
 pub mod ssh_config;
+pub mod subsystem;
 pub mod transport;
 
 use serde::{Deserialize, Serialize};
 
 use self::{
-    render::{render_remote_push_bundle, RemotePushSelection},
+    render::{render_remote_push_bundle_with_mapping, RemotePathMapping, RemotePushSelection},
     ssh_config::{list_ssh_config_hosts, validate_ssh_target, SshHostEntry, SshTargetSpec},
     transport::{
-        apply_ssh_push, probe_remote_existing_paths, test_ssh_connection, RemotePushApplyResult,
-        RemotePushFileAction, RemotePushFilePreview, SshConnectionTestResult,
+        apply_ssh_push_at, probe_remote_existing_paths_at, test_ssh_connection,
+        RemotePushApplyResult, RemotePushFileAction, RemotePushFilePreview,
+        SshConnectionTestResult,
     },
 };
 use crate::store::AppState;
+
+const REMOTE_BACKUP_DIR_NAME: &str = ".fyagent-remote-backups";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RemotePushRequest {
     pub target: SshTargetSpec,
     pub selection: RemotePushSelection,
+    #[serde(default)]
+    pub path_mapping: Option<RemotePathMapping>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -53,8 +60,15 @@ pub fn preview_ssh_config_push(
     request: RemotePushRequest,
 ) -> Result<RemotePushPreviewResult, String> {
     let validated = validate_ssh_target(&request.target)?;
-    let bundle = render_remote_push_bundle(state, &request.selection)?;
+    let bundle = render_remote_push_bundle_with_mapping(
+        state,
+        &request.selection,
+        request.path_mapping.as_ref(),
+        REMOTE_BACKUP_DIR_NAME,
+    )?;
     let mut warnings = bundle.warnings;
+    let display_prefix = bundle.display_prefix;
+    let target_root = bundle.target_root;
 
     let rel_paths: Vec<&str> = bundle
         .files
@@ -64,7 +78,7 @@ pub fn preview_ssh_config_push(
     let (reachable, remote_home, existing_set) = if rel_paths.is_empty() {
         (true, None, std::collections::HashSet::new())
     } else {
-        match probe_remote_existing_paths(&validated, &rel_paths) {
+        match probe_remote_existing_paths_at(&validated, &rel_paths, target_root.as_deref()) {
             Ok((home, existing)) => (true, home, existing),
             Err(err) => {
                 warnings.push(format!(
@@ -87,12 +101,13 @@ pub fn preview_ssh_config_push(
                 RemotePushFileAction::Create
             };
             RemotePushFilePreview {
-                remote_path: format!("~/{}", f.remote_rel_path),
+                remote_path: format!("{display_prefix}{}", f.remote_rel_path),
                 category: f.category,
                 bytes: f.content.len(),
                 mode: f.mode.to_string(),
                 contains_secret: f.contains_secret,
                 action,
+                summary: f.summary.clone(),
             }
         })
         .collect();
@@ -114,6 +129,17 @@ pub fn apply_ssh_config_push(
     request: RemotePushRequest,
 ) -> Result<RemotePushApplyResult, String> {
     let validated = validate_ssh_target(&request.target)?;
-    let bundle = render_remote_push_bundle(state, &request.selection)?;
-    apply_ssh_push(&validated, &bundle.files, bundle.warnings)
+    let bundle = render_remote_push_bundle_with_mapping(
+        state,
+        &request.selection,
+        request.path_mapping.as_ref(),
+        REMOTE_BACKUP_DIR_NAME,
+    )?;
+    apply_ssh_push_at(
+        &validated,
+        bundle.target_root.as_deref(),
+        &bundle.display_prefix,
+        &bundle.files,
+        bundle.warnings,
+    )
 }

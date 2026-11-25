@@ -2621,14 +2621,14 @@ export async function installRichTauriFeatureFixture(
             const req = payload.request as Record<string, unknown>;
             const saved: Record<string, unknown> = {
               id: String(
-                req.id ||
-                  `custom-fixture-${customGatewayTemplates.length + 1}`,
+                req.id || `custom-fixture-${customGatewayTemplates.length + 1}`,
               ),
               name: String(req.name || "自定义网关"),
               summary: String(req.summary || ""),
               baseUrl: String(req.baseUrl || "https://relay.example/v1"),
               defaultModelId: String(req.defaultModelId || "gpt-5.4"),
-              codexProtocol: req.codexProtocol === "chat" ? "chat" : "responses",
+              codexProtocol:
+                req.codexProtocol === "chat" ? "chat" : "responses",
               updatedAt: 1763550000,
               ...(typeof req.anthropicBaseUrl === "string" &&
               req.anthropicBaseUrl
@@ -2750,7 +2750,8 @@ export async function installRichTauriFeatureFixture(
               promptsImported: 2,
               skillsImported: 3,
               sessionsArchived: 18,
-              sessionArchiveDir: "~/.fyagent/imported-sessions/fypk-browser-fixture",
+              sessionArchiveDir:
+                "~/.fyagent/imported-sessions/fypk-browser-fixture",
               warnings: [],
             };
           case "list_ssh_hosts":
@@ -2763,6 +2764,111 @@ export async function installRichTauriFeatureFixture(
                 identityFile: "~/.ssh/id_ed25519",
               },
             ];
+          case "list_ssh_push_profiles":
+            return [
+              {
+                id: "ssh-profile-gpu",
+                name: "GPU 开发机",
+                host: "10.0.0.88",
+                user: "dev",
+                port: 2222,
+                identityFile: "~/.ssh/id_ed25519",
+                pathMapping: { homeRoot: "~/work-env" },
+                updatedAt: 1764000000,
+              },
+            ];
+          case "save_ssh_push_profile": {
+            const req = payload.request as {
+              id?: string;
+              name: string;
+              host: string;
+              user?: string | null;
+              port?: number | null;
+              identityFile?: string | null;
+              pathMapping?: Record<string, string | null> | null;
+            };
+            return {
+              id: req.id || "ssh-profile-fixture-new",
+              name: req.name,
+              host: req.host,
+              user: req.user ?? undefined,
+              port: req.port ?? undefined,
+              identityFile: req.identityFile ?? undefined,
+              pathMapping: req.pathMapping ?? {},
+              updatedAt: 1764000100,
+            };
+          }
+          case "delete_ssh_push_profile":
+            return true;
+          case "list_wsl_distros":
+            return {
+              supported: true,
+              available: true,
+              distros: [
+                {
+                  name: "DevEnv-24",
+                  state: "Running",
+                  version: 2,
+                  isDefault: true,
+                },
+                {
+                  name: "WorkBox-2",
+                  state: "Stopped",
+                  version: 2,
+                  isDefault: false,
+                },
+              ],
+            };
+          case "preview_wsl_config_sync": {
+            const req = payload.request as { distro: string };
+            return {
+              destination: `WSL:${req.distro || "DevEnv-24"}`,
+              remoteHome: "/Users/dev",
+              reachable: true,
+              files: [
+                {
+                  remotePath: "~/.codex/config.toml",
+                  category: "model_config",
+                  bytes: 420,
+                  mode: "644",
+                  containsSecret: false,
+                  action: "update",
+                  summary: "Codex · 模型 deepseek-flash · api.deepseek.com",
+                },
+                {
+                  remotePath: "~/.codex/auth.json",
+                  category: "model_config",
+                  bytes: 64,
+                  mode: "600",
+                  containsSecret: true,
+                  action: "create",
+                  summary: "Codex API 凭据 · api.deepseek.com（密钥已隐藏）",
+                },
+              ],
+              totalBytes: 484,
+              warnings: [],
+            };
+          }
+          case "apply_wsl_config_sync":
+            return {
+              ok: true,
+              backupDir: "~/.fyagent-wsl-backups/20261125T180000Z",
+              outcomes: [
+                {
+                  remotePath: "~/.codex/config.toml",
+                  ok: true,
+                  action: "updated",
+                  message: "已备份原文件并更新生效",
+                },
+                {
+                  remotePath: "~/.codex/auth.json",
+                  ok: true,
+                  action: "created",
+                  message: "已创建并生效",
+                },
+              ],
+              warnings: [],
+            };
           case "test_ssh_target":
             return {
               ok: true,
@@ -2783,6 +2889,7 @@ export async function installRichTauriFeatureFixture(
                   mode: "644",
                   containsSecret: false,
                   action: "update",
+                  summary: "Codex · 模型 deepseek-flash · api.deepseek.com",
                 },
                 {
                   remotePath: "~/.codex/auth.json",
@@ -2791,6 +2898,7 @@ export async function installRichTauriFeatureFixture(
                   mode: "600",
                   containsSecret: true,
                   action: "create",
+                  summary: "Codex API 凭据 · api.deepseek.com（密钥已隐藏）",
                 },
               ],
               totalBytes: 484,

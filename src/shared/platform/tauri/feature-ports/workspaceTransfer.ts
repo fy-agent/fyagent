@@ -4,8 +4,10 @@ import type {
   RemotePushApplyResult,
   RemotePushPreviewResult,
   RemotePushRequest,
+  SaveSshPushProfileRequest,
   SshConnectionTestResult,
   SshHostEntry,
+  SshPushProfile,
   SshTargetSpec,
   WorkspacePackExportOptions,
   WorkspacePackExportOutcome,
@@ -16,6 +18,8 @@ import type {
   WorkspacePackImportRequest,
   WorkspacePackInspectRequest,
   WorkspaceTransferPort,
+  WslEnvironmentStatus,
+  WslSyncRequest,
 } from "../../../features/workspace-transfer";
 
 export function createWorkspaceTransferPort(): WorkspaceTransferPort {
@@ -44,5 +48,16 @@ export function createWorkspaceTransferPort(): WorkspaceTransferPort {
       invoke<RemotePushPreviewResult>("preview_ssh_config_push", { request }),
     applySshPush: (request: RemotePushRequest) =>
       invoke<RemotePushApplyResult>("apply_ssh_config_push", { request }),
+    listSshPushProfiles: () =>
+      invoke<SshPushProfile[]>("list_ssh_push_profiles"),
+    saveSshPushProfile: (request: SaveSshPushProfileRequest) =>
+      invoke<SshPushProfile>("save_ssh_push_profile", { request }),
+    deleteSshPushProfile: (id: string) =>
+      invoke<boolean>("delete_ssh_push_profile", { id }),
+    listWslDistros: () => invoke<WslEnvironmentStatus>("list_wsl_distros"),
+    previewWslSync: (request: WslSyncRequest) =>
+      invoke<RemotePushPreviewResult>("preview_wsl_config_sync", { request }),
+    applyWslSync: (request: WslSyncRequest) =>
+      invoke<RemotePushApplyResult>("apply_wsl_config_sync", { request }),
   };
 }

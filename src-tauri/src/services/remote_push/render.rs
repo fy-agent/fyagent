@@ -59,20 +59,253 @@ pub enum RemoteFileCategory {
     SkillFile,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RemotePathMapping {
+    /// Optional target root directory override (empty means remote `$HOME`).
+    /// Accepts `~/relative/path` or an absolute POSIX `/path` without `..`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home_root: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opencode_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub omp_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedPathMapping {
+    pub home_root: Option<String>,
+    pub display_prefix: String,
+    pub claude_dir: String,
+    pub codex_dir: String,
+    pub opencode_dir: String,
+    pub omp_dir: String,
+}
+
+impl ValidatedPathMapping {
+    pub fn into_normalized_mapping(self) -> RemotePathMapping {
+        RemotePathMapping {
+            home_root: self.home_root,
+            claude_dir: (self.claude_dir != ".claude").then_some(self.claude_dir),
+            codex_dir: (self.codex_dir != ".codex").then_some(self.codex_dir),
+            opencode_dir: (self.opencode_dir != ".config/opencode").then_some(self.opencode_dir),
+            omp_dir: (self.omp_dir != ".omp/agent").then_some(self.omp_dir),
+        }
+    }
+}
+
+fn is_safe_posix_path_segment(segment: &str) -> bool {
+    !segment.is_empty()
+        && segment != "."
+        && segment != ".."
+        && !segment.starts_with('-')
+        && segment
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+}
+
+fn validate_relative_posix_dir(
+    raw: Option<&str>,
+    default_dir: &str,
+    label: &str,
+) -> Result<String, String> {
+    let Some(trimmed) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(default_dir.to_string());
+    };
+    let stripped = trimmed.trim_start_matches("./").trim_end_matches('/');
+    if stripped.is_empty() || stripped.starts_with('/') || stripped.starts_with('~') {
+        return Err(format!(
+            "{label}请填写相对目标根目录的子路径（例如 {default_dir}）"
+        ));
+    }
+    if stripped.len() > 160 || stripped.contains('\\') {
+        return Err(format!("{label}路径过长或包含非法反斜杠"));
+    }
+    let segments: Vec<&str> = stripped.split('/').collect();
+    if segments.iter().any(|seg| !is_safe_posix_path_segment(seg)) {
+        return Err(format!("{label}包含不支持的字符或 '..' 越界路径"));
+    }
+    Ok(segments.join("/"))
+}
+
+fn validate_home_root(raw: Option<&str>) -> Result<(Option<String>, String), String> {
+    let Some(trimmed) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok((None, "~/".to_string()));
+    };
+    if trimmed == "~" || trimmed == "~/" {
+        return Ok((None, "~/".to_string()));
+    }
+    if trimmed.len() > 200 || trimmed.contains('\\') {
+        return Err("目标根目录过长或包含非法反斜杠".to_string());
+    }
+    if let Some(rest) = trimmed.strip_prefix("~/") {
+        let cleaned = rest.trim_end_matches('/');
+        if cleaned.is_empty() {
+            return Ok((None, "~/".to_string()));
+        }
+        let segments: Vec<&str> = cleaned.split('/').collect();
+        if segments.iter().any(|seg| !is_safe_posix_path_segment(seg)) {
+            return Err("目标根目录包含非法字符或 '..' 越界路径".to_string());
+        }
+        let normalized = format!("~/{}", segments.join("/"));
+        let prefix = format!("{normalized}/");
+        return Ok((Some(normalized), prefix));
+    }
+    if let Some(rest) = trimmed.strip_prefix('/') {
+        let cleaned = rest.trim_end_matches('/');
+        if cleaned.is_empty() {
+            return Err("目标根目录不能直接指向系统根路径 '/'".to_string());
+        }
+        let segments: Vec<&str> = cleaned.split('/').collect();
+        if segments.iter().any(|seg| !is_safe_posix_path_segment(seg)) {
+            return Err("目标根目录包含非法字符或 '..' 越界路径".to_string());
+        }
+        let normalized = format!("/{}", segments.join("/"));
+        let prefix = format!("{normalized}/");
+        return Ok((Some(normalized), prefix));
+    }
+    Err("目标根目录请使用 '~/子目录' 或绝对 POSIX 路径 '/path/to/dir'".to_string())
+}
+
+pub fn validate_path_mapping(mapping: &RemotePathMapping) -> Result<ValidatedPathMapping, String> {
+    let (home_root, display_prefix) = validate_home_root(mapping.home_root.as_deref())?;
+    Ok(ValidatedPathMapping {
+        home_root,
+        display_prefix,
+        claude_dir: validate_relative_posix_dir(
+            mapping.claude_dir.as_deref(),
+            ".claude",
+            "Claude 目录映射",
+        )?,
+        codex_dir: validate_relative_posix_dir(
+            mapping.codex_dir.as_deref(),
+            ".codex",
+            "Codex 目录映射",
+        )?,
+        opencode_dir: validate_relative_posix_dir(
+            mapping.opencode_dir.as_deref(),
+            ".config/opencode",
+            "OpenCode 目录映射",
+        )?,
+        omp_dir: validate_relative_posix_dir(
+            mapping.omp_dir.as_deref(),
+            ".omp/agent",
+            "omp 目录映射",
+        )?,
+    })
+}
+
+fn looks_like_windows_local_path(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    (bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/'))
+        || value.starts_with("\\\\")
+}
+
+/// Normalizes a local MCP server definition for a remote POSIX target:
+/// - Unwraps Windows `cmd /c <bin> ...` wrappers into direct POSIX `<bin> ...`.
+/// - Skips stdio servers bound to host-local Windows drive paths (`C:\...`) with a warning.
+pub(crate) fn normalize_mcp_server_for_posix(
+    server: &McpServer,
+    warnings: &mut Vec<String>,
+) -> Option<McpServer> {
+    let Some(obj) = server.server.as_object() else {
+        return Some(server.clone());
+    };
+    let command = obj
+        .get("command")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let Some(cmd) = command else {
+        return Some(server.clone());
+    };
+
+    let mut next_obj = obj.clone();
+    let lower_cmd = cmd.to_ascii_lowercase();
+    if lower_cmd == "cmd" || lower_cmd == "cmd.exe" {
+        if let Some(args) = obj.get("args").and_then(Value::as_array) {
+            let str_args: Vec<&str> = args.iter().filter_map(Value::as_str).collect();
+            if str_args.len() >= 2 && str_args[0].eq_ignore_ascii_case("/c") {
+                let real_cmd = str_args[1].trim();
+                if looks_like_windows_local_path(real_cmd) {
+                    warnings.push(format!(
+                        "MCP「{}」引用了 Windows 本机路径命令，远程 POSIX 环境不可直接执行，已跳过。",
+                        server.id
+                    ));
+                    return None;
+                }
+                next_obj.insert("command".to_string(), Value::String(real_cmd.to_string()));
+                let rest: Vec<Value> = str_args[2..]
+                    .iter()
+                    .map(|s| Value::String((*s).to_string()))
+                    .collect();
+                next_obj.insert("args".to_string(), Value::Array(rest));
+                warnings.push(format!(
+                    "MCP「{}」已自动将 Windows cmd /c 包装转换为 POSIX 直接调用 `{}`。",
+                    server.id, real_cmd
+                ));
+            }
+        }
+    } else if looks_like_windows_local_path(cmd) {
+        warnings.push(format!(
+            "MCP「{}」使用 Windows 本机路径命令，远程 POSIX 环境不可直接执行，已跳过。",
+            server.id
+        ));
+        return None;
+    }
+
+    if let Some(cwd) = next_obj
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        if looks_like_windows_local_path(cwd) {
+            next_obj.remove("cwd");
+            warnings.push(format!(
+                "MCP「{}」的工作目录为 Windows 本机路径，远程渲染时已忽略 cwd。",
+                server.id
+            ));
+        }
+    }
+
+    let mut cloned = server.clone();
+    cloned.server = Value::Object(next_obj);
+    Some(cloned)
+}
+
+fn summarize_endpoint_host(base_url: &str) -> String {
+    reqwest::Url::parse(base_url)
+        .ok()
+        .and_then(|u| u.host_str().map(ToOwned::to_owned))
+        .unwrap_or_else(|| "自定义网关".to_string())
+}
+
 #[derive(Debug, Clone)]
 pub struct RenderedRemoteFile {
-    /// Clean relative path under remote `$HOME` (e.g. `.codex/config.toml`).
+    /// Clean relative path under target root (e.g. `.codex/config.toml`).
     pub remote_rel_path: String,
     pub category: RemoteFileCategory,
     /// Octal permissions string (`"600"` for secret-bearing files, `"644"` otherwise).
     pub mode: &'static str,
     pub contains_secret: bool,
+    /// Redacted human-readable content summary (NEVER contains API keys or tokens).
+    pub summary: String,
     pub content: Zeroizing<Vec<u8>>,
 }
 
 pub struct RenderedPushBundle {
     pub files: Vec<RenderedRemoteFile>,
     pub warnings: Vec<String>,
+    pub target_root: Option<String>,
+    pub display_prefix: String,
 }
 
 fn sanitize_toml_ident(raw: &str) -> String {
@@ -372,10 +605,16 @@ fn render_omp_files(
     (models_yml, config_yml)
 }
 
-pub fn render_remote_push_bundle(
+pub fn render_remote_push_bundle_with_mapping(
     state: &AppState,
     selection: &RemotePushSelection,
+    path_mapping: Option<&RemotePathMapping>,
+    backup_dir_name: &str,
 ) -> Result<RenderedPushBundle, String> {
+    let mapping = match path_mapping {
+        Some(raw) => validate_path_mapping(raw)?,
+        None => validate_path_mapping(&RemotePathMapping::default())?,
+    };
     let mut files: Vec<RenderedRemoteFile> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
 
@@ -390,10 +629,13 @@ pub fn render_remote_push_bundle(
         selection.model_targets.clone()
     };
 
-    let mcp_servers = if selection.include_mcp {
+    let mcp_servers: Vec<McpServer> = if selection.include_mcp {
         let (servers, w) = collect_mcp_projections(state);
         warnings.extend(w);
         servers
+            .iter()
+            .filter_map(|server| normalize_mcp_server_for_posix(server, &mut warnings))
+            .collect()
     } else {
         Vec::new()
     };
@@ -418,6 +660,7 @@ pub fn render_remote_push_bundle(
                 ));
                 continue;
             };
+            let host = summarize_endpoint_host(&model.base_url);
 
             match model.target {
                 BatchSetupTargetId::Claude => {
@@ -430,10 +673,14 @@ pub fn render_remote_push_bundle(
                     }))
                     .map_err(|e| format!("渲染 Claude 配置失败: {e}"))?;
                     files.push(RenderedRemoteFile {
-                        remote_rel_path: ".claude/settings.json".to_string(),
+                        remote_rel_path: format!("{}/settings.json", mapping.claude_dir),
                         category: RemoteFileCategory::ModelConfig,
                         mode: "600",
                         contains_secret: true,
+                        summary: format!(
+                            "Claude Code · 模型 {} · {}（密钥已隐藏）",
+                            model.model_id, host
+                        ),
                         content: Zeroizing::new(body),
                     });
                 }
@@ -447,12 +694,21 @@ pub fn render_remote_push_bundle(
                         &mcp_servers,
                         &mut warnings,
                     );
+                    let codex_mcp_count = mcp_servers.iter().filter(|s| s.apps.codex).count();
                     codex_rendered = true;
                     files.push(RenderedRemoteFile {
-                        remote_rel_path: ".codex/config.toml".to_string(),
+                        remote_rel_path: format!("{}/config.toml", mapping.codex_dir),
                         category: RemoteFileCategory::ModelConfig,
                         mode: if mcp_has_secrets { "600" } else { "644" },
                         contains_secret: mcp_has_secrets,
+                        summary: if codex_mcp_count > 0 {
+                            format!(
+                                "Codex · 模型 {} · {}（含 {} 项 MCP）",
+                                model.model_id, host, codex_mcp_count
+                            )
+                        } else {
+                            format!("Codex · 模型 {} · {}", model.model_id, host)
+                        },
                         content: Zeroizing::new(toml_text.into_bytes()),
                     });
                     let auth_json = serde_json::to_vec_pretty(&json!({
@@ -460,10 +716,11 @@ pub fn render_remote_push_bundle(
                     }))
                     .map_err(|e| format!("渲染 Codex auth.json 失败: {e}"))?;
                     files.push(RenderedRemoteFile {
-                        remote_rel_path: ".codex/auth.json".to_string(),
+                        remote_rel_path: format!("{}/auth.json", mapping.codex_dir),
                         category: RemoteFileCategory::ModelConfig,
                         mode: "600",
                         contains_secret: true,
+                        summary: format!("Codex API 凭据 · {}（密钥已隐藏）", host),
                         content: Zeroizing::new(auth_json),
                     });
                 }
@@ -474,12 +731,24 @@ pub fn render_remote_push_bundle(
                         &mcp_servers,
                         &mut warnings,
                     )?;
+                    let oc_mcp_count = mcp_servers.iter().filter(|s| s.apps.opencode).count();
                     opencode_rendered = true;
                     files.push(RenderedRemoteFile {
-                        remote_rel_path: ".config/opencode/opencode.json".to_string(),
+                        remote_rel_path: format!("{}/opencode.json", mapping.opencode_dir),
                         category: RemoteFileCategory::ModelConfig,
                         mode: "600",
                         contains_secret: true,
+                        summary: if oc_mcp_count > 0 {
+                            format!(
+                                "OpenCode · 模型 {} · {}（含 {} 项 MCP，密钥已隐藏）",
+                                model.model_id, host, oc_mcp_count
+                            )
+                        } else {
+                            format!(
+                                "OpenCode · 模型 {} · {}（密钥已隐藏）",
+                                model.model_id, host
+                            )
+                        },
                         content: Zeroizing::new(json_bytes),
                     });
                 }
@@ -491,24 +760,30 @@ pub fn render_remote_push_bundle(
                         api_key.as_str(),
                         model.protocol,
                     );
+                    let safe_id = sanitize_toml_ident(&model.provider_id);
                     files.push(RenderedRemoteFile {
-                        remote_rel_path: ".omp/agent/models.yml".to_string(),
+                        remote_rel_path: format!("{}/models.yml", mapping.omp_dir),
                         category: RemoteFileCategory::ModelConfig,
                         mode: "600",
                         contains_secret: true,
+                        summary: format!(
+                            "Oh My Pi · 模型 {} · {}（密钥已隐藏）",
+                            model.model_id, host
+                        ),
                         content: Zeroizing::new(models_yml.into_bytes()),
                     });
                     files.push(RenderedRemoteFile {
-                        remote_rel_path: ".omp/agent/config.yml".to_string(),
+                        remote_rel_path: format!("{}/config.yml", mapping.omp_dir),
                         category: RemoteFileCategory::ModelConfig,
                         mode: "644",
                         contains_secret: false,
+                        summary: format!("Oh My Pi 默认模型 {safe_id}/{}", model.model_id),
                         content: Zeroizing::new(config_yml.into_bytes()),
                     });
                 }
                 BatchSetupTargetId::Workbuddy | BatchSetupTargetId::Grokbuild => {
                     warnings.push(format!(
-                        "{} 为桌面端专用配置，远程 SSH 推送默认跳过。",
+                        "{} 为桌面端专用配置，远程同步默认跳过。",
                         model.target.as_str()
                     ));
                 }
@@ -540,30 +815,35 @@ pub fn render_remote_push_bundle(
             }
         }
         if !claude_mcp.is_empty() {
+            let count = claude_mcp.len();
             let body = serde_json::to_vec_pretty(&json!({ "mcpServers": claude_mcp }))
                 .map_err(|e| format!("渲染 Claude MCP 清单失败: {e}"))?;
+            let claude_mcp_rel = format!("{}/mcp.json", mapping.claude_dir);
             files.push(RenderedRemoteFile {
-                remote_rel_path: ".claude/mcp.json".to_string(),
+                remote_rel_path: claude_mcp_rel.clone(),
                 category: RemoteFileCategory::McpConfig,
                 mode: "600",
                 contains_secret: claude_mcp_has_secret,
+                summary: format!("Claude Code · {count} 项 MCP 服务器"),
                 content: Zeroizing::new(body),
             });
-            warnings.push(
-                "Claude MCP 已写入独立的 ~/.claude/mcp.json 以保护远端 ~/.claude.json 登录态，启动时可加 --mcp-config ~/.claude/mcp.json 加载。"
-                    .to_string(),
-            );
+            warnings.push(format!(
+                "Claude MCP 已写入独立的 {}{} 以保护远端登录态，启动时可加 --mcp-config {}{} 加载。",
+                mapping.display_prefix, claude_mcp_rel, mapping.display_prefix, claude_mcp_rel
+            ));
         }
 
         if !codex_rendered {
             if let Some((toml_text, has_secrets)) =
                 render_codex_mcp_only_toml(&mcp_servers, &mut warnings)
             {
+                let count = mcp_servers.iter().filter(|s| s.apps.codex).count();
                 files.push(RenderedRemoteFile {
-                    remote_rel_path: ".codex/config.toml".to_string(),
+                    remote_rel_path: format!("{}/config.toml", mapping.codex_dir),
                     category: RemoteFileCategory::McpConfig,
                     mode: if has_secrets { "600" } else { "644" },
                     contains_secret: has_secrets,
+                    summary: format!("Codex · {count} 项 MCP 服务器"),
                     content: Zeroizing::new(toml_text.into_bytes()),
                 });
             }
@@ -572,16 +852,18 @@ pub fn render_remote_push_bundle(
         if !opencode_rendered {
             let (mcp_obj, has_secrets) = build_opencode_mcp_map(&mcp_servers, &mut warnings);
             if !mcp_obj.is_empty() {
+                let count = mcp_obj.len();
                 let body = serde_json::to_vec_pretty(&json!({
                     "$schema": "https://opencode.ai/config.json",
                     "mcp": mcp_obj,
                 }))
                 .map_err(|e| format!("渲染 OpenCode MCP 配置失败: {e}"))?;
                 files.push(RenderedRemoteFile {
-                    remote_rel_path: ".config/opencode/opencode.json".to_string(),
+                    remote_rel_path: format!("{}/opencode.json", mapping.opencode_dir),
                     category: RemoteFileCategory::McpConfig,
                     mode: if has_secrets { "600" } else { "644" },
                     contains_secret: has_secrets,
+                    summary: format!("OpenCode · {count} 项 MCP 服务器"),
                     content: Zeroizing::new(body),
                 });
             }
@@ -594,10 +876,9 @@ pub fn render_remote_push_bundle(
             RemoteFileCategory::ModelConfig | RemoteFileCategory::McpConfig
         )
     }) {
-        warnings.push(
-            "远程推送采用整文件原子替换，覆盖前会自动将远端原文件完整备份到 ~/.fyagent-remote-backups/<时间戳>/。"
-                .to_string(),
-        );
+        warnings.push(format!(
+            "同步采用整文件原子替换，覆盖前会自动将目标原文件完整备份到 ~/{backup_dir_name}/<时间戳>/。"
+        ));
     }
 
     if selection.include_prompts {
@@ -607,21 +888,23 @@ pub fn render_remote_push_bundle(
             if !entry.prompt.enabled || entry.prompt.content.trim().is_empty() {
                 continue;
             }
-            let rel_path = match entry.app.as_str() {
-                "claude" => ".claude/CLAUDE.md",
-                "codex" => ".codex/AGENTS.md",
-                "gemini" => ".gemini/GEMINI.md",
-                "opencode" => ".config/opencode/AGENTS.md",
+            let (rel_path, app_label) = match entry.app.as_str() {
+                "claude" => (format!("{}/CLAUDE.md", mapping.claude_dir), "Claude Code"),
+                "codex" => (format!("{}/AGENTS.md", mapping.codex_dir), "Codex"),
+                "gemini" => (".gemini/GEMINI.md".to_string(), "Gemini"),
+                "opencode" => (format!("{}/AGENTS.md", mapping.opencode_dir), "OpenCode"),
                 _ => continue,
             };
             if files.iter().any(|f| f.remote_rel_path == rel_path) {
                 continue;
             }
+            let line_count = entry.prompt.content.lines().count();
             files.push(RenderedRemoteFile {
-                remote_rel_path: rel_path.to_string(),
+                remote_rel_path: rel_path,
                 category: RemoteFileCategory::GlobalPrompt,
                 mode: "644",
                 contains_secret: false,
+                summary: format!("{app_label} 全局提示词（{line_count} 行）"),
                 content: Zeroizing::new(entry.prompt.content.into_bytes()),
             });
         }
@@ -642,18 +925,18 @@ pub fn render_remote_push_bundle(
                 dir_slug = format!("{base_slug}-{suffix}");
                 suffix += 1;
             }
-            let mut target_roots: Vec<&str> = Vec::new();
+            let mut target_roots: Vec<String> = Vec::new();
             if skill.metadata.apps.claude {
-                target_roots.push(".claude/skills");
+                target_roots.push(format!("{}/skills", mapping.claude_dir));
             }
             if skill.metadata.apps.codex {
-                target_roots.push(".codex/skills");
+                target_roots.push(format!("{}/skills", mapping.codex_dir));
             }
             if skill.metadata.apps.opencode {
-                target_roots.push(".config/opencode/skills");
+                target_roots.push(format!("{}/skills", mapping.opencode_dir));
             }
             if target_roots.is_empty() {
-                target_roots.push(".claude/skills");
+                target_roots.push(format!("{}/skills", mapping.claude_dir));
             }
 
             for root in target_roots {
@@ -664,6 +947,7 @@ pub fn render_remote_push_bundle(
                             category: RemoteFileCategory::SkillFile,
                             mode: "644",
                             contains_secret: false,
+                            summary: format!("Skill「{dir_slug}」"),
                             content: Zeroizing::new(file.content.as_bytes().to_vec()),
                         });
                     }
@@ -680,7 +964,12 @@ pub fn render_remote_push_bundle(
         ));
     }
 
-    Ok(RenderedPushBundle { files, warnings })
+    Ok(RenderedPushBundle {
+        files,
+        warnings,
+        target_root: mapping.home_root,
+        display_prefix: mapping.display_prefix,
+    })
 }
 
 #[cfg(test)]
@@ -794,5 +1083,95 @@ mod tests {
             cfg_val["modelRoles"]["default"].as_str(),
             Some("deepseek/deepseek-chat")
         );
+    }
+
+    #[test]
+    fn validates_custom_path_mappings_and_blocks_traversal() {
+        let ok = validate_path_mapping(&RemotePathMapping {
+            home_root: Some("~/work/profile".to_string()),
+            claude_dir: Some(".claude-alt".to_string()),
+            codex_dir: None,
+            opencode_dir: Some(".config/opencode-dev".to_string()),
+            omp_dir: None,
+        })
+        .unwrap();
+        assert_eq!(ok.home_root.as_deref(), Some("~/work/profile"));
+        assert_eq!(ok.display_prefix, "~/work/profile/");
+        assert_eq!(ok.claude_dir, ".claude-alt");
+        assert_eq!(ok.codex_dir, ".codex");
+        assert_eq!(ok.opencode_dir, ".config/opencode-dev");
+
+        assert!(validate_path_mapping(&RemotePathMapping {
+            home_root: Some("~/../etc".to_string()),
+            ..Default::default()
+        })
+        .is_err());
+        assert!(validate_path_mapping(&RemotePathMapping {
+            home_root: Some("/".to_string()),
+            ..Default::default()
+        })
+        .is_err());
+        assert!(validate_path_mapping(&RemotePathMapping {
+            claude_dir: Some("/abs/path".to_string()),
+            ..Default::default()
+        })
+        .is_err());
+        assert!(validate_path_mapping(&RemotePathMapping {
+            codex_dir: Some("foo;rm -rf /".to_string()),
+            ..Default::default()
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn normalizes_windows_cmd_wrapper_and_skips_drive_paths_for_posix_targets() {
+        let mut warnings = Vec::new();
+        let wrapped = McpServer {
+            id: "playwright".to_string(),
+            name: "Playwright".to_string(),
+            server: json!({
+                "type": "stdio",
+                "command": "cmd",
+                "args": ["/c", "npx", "-y", "@playwright/mcp@latest"],
+                "cwd": "C:\\Users\\demo\\project"
+            }),
+            apps: McpApps {
+                claude: true,
+                ..Default::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: Vec::new(),
+        };
+        let normalized = normalize_mcp_server_for_posix(&wrapped, &mut warnings).unwrap();
+        assert_eq!(normalized.server["command"], "npx");
+        assert_eq!(
+            normalized.server["args"],
+            json!(["-y", "@playwright/mcp@latest"])
+        );
+        assert!(normalized.server.get("cwd").is_none());
+        assert!(warnings.iter().any(|w| w.contains("cmd /c")));
+        assert!(warnings.iter().any(|w| w.contains("cwd")));
+
+        let local_exe = McpServer {
+            id: "local-tool".to_string(),
+            name: "Local Exe".to_string(),
+            server: json!({
+                "type": "stdio",
+                "command": "C:\\tools\\my-mcp.exe",
+                "args": []
+            }),
+            apps: McpApps {
+                claude: true,
+                ..Default::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: Vec::new(),
+        };
+        assert!(normalize_mcp_server_for_posix(&local_exe, &mut warnings).is_none());
+        assert!(warnings.iter().any(|w| w.contains("local-tool")));
     }
 }

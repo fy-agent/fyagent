@@ -254,6 +254,25 @@ const DEVELOPMENT_HOST_CONTENT_RULE_IDS = new Set([
   "native-object-format",
   "retired-home-layout",
 ]);
+export const WINDOWS_SUBSYSTEM_SYNC_ADMISSION_PATHS = Object.freeze([
+  "src-tauri/permissions/legacy-application-commands.toml",
+  "src-tauri/src/commands/agent_catalog.rs",
+  "src-tauri/src/commands/workspace_transfer.rs",
+  "src-tauri/src/lib.rs",
+  "src-tauri/src/services/remote_push/mod.rs",
+  "src-tauri/src/services/remote_push/subsystem.rs",
+  "src/shared/features/queries.ts",
+  "src/shared/features/workspace-transfer-ui/WorkspaceTransferDialog.tsx",
+  "src/shared/features/workspace-transfer.ts",
+  "src/shared/platform/browser/features.ts",
+  "src/shared/platform/tauri/feature-ports/workspaceTransfer.ts",
+  "src/shared/platform/tauri/features.ts",
+  "tests/browser/agents-models.spec.ts",
+  "tests/browser/support/features.ts",
+  "tests/renderer/features/workspace-transfer/WorkspaceTransferDialog.test.tsx",
+  "tests/renderer/platform/tauriAclContract.test.ts",
+]);
+const WINDOWS_SUBSYSTEM_SYNC_CONTENT_RULE_IDS = new Set(["subsystem-bridge"]);
 const UNSUPPORTED_CFG =
   '#[cfg(not(any(target_os = "windows", target_os = "macos")))]';
 const TESTABLE_UNSUPPORTED_CFG =
@@ -2280,7 +2299,9 @@ export function scanText(relativePath, source) {
   const vendorMetadata = vendorNpmMetadataLines(relativePath, inspected);
   const skipIds = DEVELOPMENT_HOST_ADMISSION_PATHS.includes(relativePath)
     ? DEVELOPMENT_HOST_CONTENT_RULE_IDS
-    : undefined;
+    : WINDOWS_SUBSYSTEM_SYNC_ADMISSION_PATHS.includes(relativePath)
+      ? WINDOWS_SUBSYSTEM_SYNC_CONTENT_RULE_IDS
+      : undefined;
   for (const [index, line] of inspected.split(/\r?\n/u).entries()) {
     for (const rule of CONTENT_RULES) {
       if (skipIds?.has(rule.id)) continue;
