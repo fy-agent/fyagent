@@ -791,6 +791,8 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn batch_setup_preserves_unrelated_user_fields_in_opencode_and_omp() {
+        #[cfg(target_os = "windows")]
+        crate::initialize_windows_user_context().expect("Windows test user context");
         // 1) OpenCode: pre-existing custom fields and an unrelated user provider must survive batch sync.
         let temp = tempfile::tempdir().unwrap();
         let prev_home = std::env::var_os("FYAGENT_TEST_HOME");
