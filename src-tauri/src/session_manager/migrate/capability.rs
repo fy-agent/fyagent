@@ -512,7 +512,6 @@ mod tests {
         ));
     }
 
-
     #[test]
     fn an_unverified_version_closes_both_gates() {
         let codex = build_probe("codex", Some("0.155.0".to_string()));
