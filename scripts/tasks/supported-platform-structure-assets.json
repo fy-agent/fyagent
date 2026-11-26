@@ -326,6 +326,10 @@
       "ee7c4040f2e1c5ef5f80aae1db0da532d7208edfd72cee4985890709d880c626"
     ],
     [
+      "src-tauri/src/services/provider/batch_setup.rs",
+      "6f23c86bae7591492200f5ec20d3292fb19105c7017c336602bc6f91d3a8f567"
+    ],
+    [
       "src-tauri/src/services/provider/claude_write_projection.rs",
       "5ed62122c35008aa3c208de0b14fef7a6852aa1e037e98c3ca3724c5f5fdefa0"
     ],
