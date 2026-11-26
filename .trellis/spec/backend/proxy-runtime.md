@@ -46,11 +46,15 @@ start_proxy_server / stop_proxy_server / stop_proxy_with_restore
 get_proxy_status / is_proxy_running
 get_proxy_config / update_proxy_config
 
-get_global_proxy_config / update_global_proxy_config
-get_proxy_access_key / regenerate_proxy_access_key
 get_proxy_config_for_app / update_proxy_config_for_app
 get_default_cost_multiplier / set_default_cost_multiplier
 get_pricing_model_source / set_pricing_model_source
+
+// Retired from renderer IPC after removing the frontend Proxy Settings UI:
+// get_global_proxy_config / update_global_proxy_config /
+// get_proxy_access_key / regenerate_proxy_access_key.
+// Internal proxy self-healing, global config persistence and key rotation
+// remain owned by ProxyService and Database without main-window ACL exposure.
 
 get_proxy_takeover_status / set_proxy_takeover_for_app
 is_live_takeover_active / switch_proxy_provider

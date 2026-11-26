@@ -240,10 +240,6 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       openOpenClawDirectory: rejectNativeOnly,
     },
     settings: {
-      getProxyConfig: rejectNativeOnly,
-      saveProxyConfig: rejectNativeOnly,
-      getProxyAccessKey: rejectNativeOnly,
-      regenerateProxyAccessKey: rejectNativeOnly,
       getAppVersion: rejectNativeOnly,
       get: async () => ({}),
       save: rejectNativeOnly,

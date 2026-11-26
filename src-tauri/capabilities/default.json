@@ -25,6 +25,8 @@
     "allow-managed-auth",
     "allow-user-config-recovery",
     "allow-config-pack",
-    "allow-session-migration"
+    "allow-session-migration",
+    "allow-model-management-loop",
+    "allow-workspace-transfer"
   ]
 }

@@ -1,0 +1,21 @@
+[[permission]]
+identifier = "allow-model-management-loop"
+description = "Allows cross-client model batch setup, saved-model connectivity probing, Codex reload observation, Oh My Pi (omp) configuration, cross-client health overview, cloning, API key rotation, and custom gateway templates."
+commands.allow = [
+  "discover_omp_cli",
+  "read_omp_config",
+  "preview_omp_save",
+  "apply_omp_save",
+  "preview_batch_provider_setup",
+  "apply_batch_provider_setup",
+  "probe_saved_model",
+  "get_codex_reload_status",
+  "get_model_health_overview",
+  "preview_clone_model_config",
+  "apply_clone_model_config",
+  "preview_api_key_rotation",
+  "apply_api_key_rotation",
+  "list_custom_gateway_templates",
+  "save_custom_gateway_template",
+  "delete_custom_gateway_template",
+]
