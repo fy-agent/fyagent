@@ -455,7 +455,7 @@
     ],
     [
       "src-tauri/src/session_manager/migrate/native/codex.rs",
-      "f3d941fd68e0e99c0f19eab0d981ce9f0784ee601071a7cdbef56522362b6599"
+      "fdd3331c71e8ebe11322d845c17cf18188fb5820d12a26ad679c1755265a9389"
     ],
     [
       "src-tauri/src/session_manager/migrate/native/gemini.rs",

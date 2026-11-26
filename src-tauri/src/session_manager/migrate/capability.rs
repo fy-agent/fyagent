@@ -156,7 +156,21 @@ pub fn probe_local_provider(provider_id: &str) -> MigrationResult<LocalProviderP
         return Ok(build_probe(provider_id, None));
     };
     let detected = detect_version(&executable)?;
-    Ok(build_probe(provider_id, detected))
+    let mut probe = build_probe(provider_id, detected);
+    if provider_id == "codex" && probe.write_supported {
+        apply_codex_store_gate(&mut probe, &crate::codex_config::get_codex_config_dir());
+    }
+    Ok(probe)
+}
+
+fn apply_codex_store_gate(probe: &mut LocalProviderProbe, home: &std::path::Path) {
+    if !probe.write_supported {
+        return;
+    }
+    if let Err(error) = super::native::codex::read_installation_id_at(home) {
+        probe.write_supported = false;
+        probe.reason_code = Some(error.code().into());
+    }
 }
 
 /// Run `<cli> --version` with a deadline. `Ok(None)` means the executable
@@ -268,12 +282,22 @@ pub fn require_extraction_gate(provider_id: &str) -> MigrationResult<LocalProvid
 /// The restore gate. Passing the export gate does not imply this one.
 pub fn require_write_gate(provider_id: &str) -> MigrationResult<LocalProviderProbe> {
     let probe = probe_local_provider(provider_id)?;
+    validate_write_probe(probe)
+}
+
+fn validate_write_probe(probe: LocalProviderProbe) -> MigrationResult<LocalProviderProbe> {
+    let provider_id = probe.provider_id.as_str();
     if !probe.installed {
         return Err(MigrationError::ProviderNotInstalled {
             provider_id: provider_id.to_string(),
         });
     }
     if !probe.write_supported {
+        if probe.reason_code.as_deref() == Some("targetStoreUnidentified") {
+            return Err(MigrationError::TargetStoreUnidentified {
+                provider_id: provider_id.to_string(),
+            });
+        }
         return Err(MigrationError::ProviderVersionUnsupported {
             provider_id: provider_id.to_string(),
             detected: probe.detected_version,
@@ -436,6 +460,58 @@ mod tests {
             Some("extractionRuleUnavailable")
         );
     }
+
+    #[test]
+    fn codex_probe_requires_native_initialization_without_mutating_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join("codex-home");
+        let probe_at = |version: &str| {
+            let mut probe = build_probe("codex", Some(version.into()));
+            apply_codex_store_gate(&mut probe, &home);
+            probe
+        };
+
+        let missing = probe_at("0.154.0");
+        assert!(missing.installed && missing.extraction_supported);
+        assert!(!missing.write_supported);
+        assert_eq!(
+            missing.reason_code.as_deref(),
+            Some("targetStoreUnidentified")
+        );
+        assert!(matches!(
+            validate_write_probe(missing),
+            Err(MigrationError::TargetStoreUnidentified { provider_id }) if provider_id == "codex"
+        ));
+        assert!(!home.exists());
+
+        std::fs::create_dir(&home).unwrap();
+        let identity = home.join("installation_id");
+        let valid = "4036a238-95b5-4f70-9472-3b81df1f1183\n";
+        for invalid in ["invalid".to_string(), format!("{valid}{}", " ".repeat(257))] {
+            std::fs::write(&identity, &invalid).unwrap();
+            assert!(!probe_at("0.154.0").write_supported);
+            assert_eq!(std::fs::read_to_string(&identity).unwrap(), invalid);
+        }
+
+        // Synthetic fixture only: neither probe nor gate creates this identity.
+        std::fs::write(&identity, valid).unwrap();
+        let initialized = probe_at("0.154.0");
+        assert!(initialized.write_supported);
+        assert_eq!(initialized.reason_code, None);
+        assert!(validate_write_probe(initialized).is_ok());
+        assert_eq!(std::fs::read_dir(&home).unwrap().count(), 1);
+
+        let unsupported = probe_at("0.155.0");
+        assert_eq!(
+            unsupported.reason_code.as_deref(),
+            Some("extractionRuleVersionMismatch")
+        );
+        assert!(matches!(
+            validate_write_probe(unsupported),
+            Err(MigrationError::ProviderVersionUnsupported { .. })
+        ));
+    }
+
 
     #[test]
     fn an_unverified_version_closes_both_gates() {

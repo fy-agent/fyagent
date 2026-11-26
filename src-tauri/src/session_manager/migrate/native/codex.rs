@@ -38,14 +38,26 @@ fn protocol_error(method: &str, reason: impl Into<String>) -> MigrationError {
 /// Used by export as well as restore: matching a native ID in an unrelated
 /// copied store never inherits this installation's source mapping.
 pub(crate) fn store_identity_at(home: &Path) -> MigrationResult<String> {
-    let installation = std::fs::read_to_string(home.join("installation_id"))
-        .ok()
-        .and_then(|id| uuid::Uuid::parse_str(id.trim()).ok())
-        .ok_or_else(|| MigrationError::TargetStoreUnidentified {
-            provider_id: "codex".into(),
-        })?;
+    let installation = read_installation_id_at(home)?;
     let instance = super::super::identity::store_instance_id("codex", home)?;
     Ok(format!("codex:{installation}:{instance}"))
+}
+
+/// Observe Codex's identity without initializing either store.
+pub(crate) fn read_installation_id_at(home: &Path) -> MigrationResult<uuid::Uuid> {
+    const MAX_ID_BYTES: u64 = 256;
+    let read_id = || -> Option<uuid::Uuid> {
+        let file = std::fs::File::open(home.join("installation_id")).ok()?;
+        let mut raw = String::new();
+        file.take(MAX_ID_BYTES + 1).read_to_string(&mut raw).ok()?;
+        if raw.len() as u64 > MAX_ID_BYTES {
+            return None;
+        }
+        uuid::Uuid::parse_str(raw.trim()).ok()
+    };
+    read_id().ok_or_else(|| MigrationError::TargetStoreUnidentified {
+        provider_id: "codex".into(),
+    })
 }
 
 impl NativeSessionWriter for CodexWriter {

@@ -114,6 +114,75 @@ async function readPackage(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("session package import behavior", () => {
+  it.each([true, false])("gates Gemini restore by write support (%s), not extraction", async (writeSupported) => {
+    const user = userEvent.setup();
+    const sample = multiProviderPackage();
+    const source = sample.package.sessions[0];
+    const { props } = renderDialog({
+      onReadPackage: async () => ({
+        package: sessionPackageSchema.parse({
+          ...sample.package,
+          sessions: [
+            { ...source, origin: { ...source.origin, providerId: "gemini" } },
+          ],
+        }),
+        attempts: [],
+      }),
+      localProbes: {
+        gemini: {
+          ...probe("gemini", writeSupported),
+          detectedVersion: "0.46.0",
+          extractionSupported: false,
+          reasonCode: "extractionRuleUnavailable",
+        },
+      },
+    });
+    await readPackage(user);
+    const restore = screen.getByRole("button", { name: "确认恢复至目标软件" });
+    if (writeSupported) {
+      expect(restore).toBeEnabled();
+      await user.click(restore);
+      expect(props.onRestore).toHaveBeenCalledWith(
+        expect.objectContaining({ targetProviderId: "gemini" }),
+      );
+    } else {
+      expect(restore).toBeDisabled();
+      expect(props.onRestore).not.toHaveBeenCalled();
+    }
+  });
+
+  it("focuses and requests scrolling to the new failure alert", async () => {
+    const user = userEvent.setup();
+    const scroll = vi.fn();
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scroll,
+    });
+    try {
+      renderDialog({
+        onReadPackage: async () => {
+          throw { code: "packageMalformed" };
+        },
+      });
+      await user.click(screen.getByRole("button", { name: "选择文件" }));
+      await user.click(screen.getByRole("button", { name: "解析会话包" }));
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveFocus();
+      expect(scroll).toHaveBeenCalledWith({ block: "nearest" });
+      expect(scroll.mock.contexts).toContain(alert);
+    } finally {
+      if (original) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", original);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
+  });
+
   it("filters snapshots by provider and disables an unsupported local target", async () => {
     const user = userEvent.setup();
     const { props } = renderDialog();
@@ -365,6 +434,7 @@ describe("session package import behavior", () => {
     );
 
     const alert = await screen.findByRole("alert");
+    expect(alert).toHaveFocus();
     expect(
       within(alert).getByText("目标数据库正在被占用，请先关闭目标客户端", {
         exact: true,

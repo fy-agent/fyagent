@@ -49,6 +49,9 @@ bodies or authentication material. Native history stays in the provider store.
 - Tool calls/results, progress, reasoning, files, attachments and runtime
   injections do not enter the transcript. Classify by versioned structured
   provenance, never by a guess that the last assistant must be final.
+- Codex's local JSONL title fallback skips messages with structured provenance
+  unless every content kind is `user.text`. Legacy records without provenance
+  and explicit thread names retain their existing behavior. This is display-only.
 - Workspace metadata is a basename/path-family hint. It cannot select a
   target directory or rewrite paths inside message text. The target directory,
   account and model belong to the target installation.
@@ -97,6 +100,11 @@ bodies or authentication material. Native history stays in the provider store.
 - Keep all seven provider rows visible. Extraction support and write support
   are separate gates, each pinned to actual verified versions and the local
   executable/store. A missing implementation is a concrete capability gap.
+- For a verified Codex writer, readiness requires a parseable UUID in the
+  native `installation_id` (bounded read, at most 256 bytes). A failed read sets
+  `writeSupported: false` and `targetStoreUnidentified` without creating either
+  store's identity, changing extraction support, or replacing the writer's
+  later store-instance checks. Only native Codex initializes `installation_id`.
 - `nativeWritten` means publication succeeded. `nativeReadbackVerified`
   requires the provider's own read interface and an exact transcript digest;
   reading the file we wrote is insufficient. Opening a client does not prove
@@ -121,6 +129,10 @@ and native ID. Match receipts by exact origin/snapshot or exact target identity.
 Preview every selected export item and freeze the set used for the write.
 Multi-provider packages restore only snapshots belonging to the selected
 corresponding provider. Probe failure disables the mutation with a useful reason.
+Toolbar and shortcut openings refresh readiness before allowing a new write or
+same-binding retry; cached positives cannot authorize an opening. Codex's
+first-launch guidance is specific to readiness, not a reinterpretation of the
+same error code during a restore or store-identity change.
 Show unresolved and failed results without a success banner. Modal request IDs
 and pending work follow the shared Dialog lifecycle contract.
 

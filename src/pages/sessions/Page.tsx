@@ -123,7 +123,7 @@ export function SessionsPage() {
     enabled: isNative && visible,
   });
 
-  const { data: localProbes = {} } = useQuery<
+  const { data: localProbes = {}, refetch: refetchLocalProbes } = useQuery<
     Record<string, LocalProviderProbe>
   >({
     queryKey: ["sessions-local-probes"],
@@ -242,7 +242,12 @@ export function SessionsPage() {
 
   const [exportTargets, setExportTargets, exportSessionKey] =
     useDialogState<ExportTargetItem[]>();
-  const [importOpen, setImportOpen] = useDialogState<boolean>();
+  const [importOpen, setImportOpen] = useState(false);
+  const [importProbes, setImportProbes] = useState<Record<
+    string,
+    LocalProviderProbe
+  > | null>(null);
+  const importProbeGeneration = useRef(0);
   const [remapOpen, setRemapOpen, remapSessionKey] = useDialogState<boolean>();
   const [guideOpen, setGuideOpen, guideSessionKey] = useDialogState<boolean>();
   const [attestationOpen, setAttestationOpen, attestationSessionKey] =
@@ -449,6 +454,24 @@ export function SessionsPage() {
     setExportTargets(targets);
   }, [selectedKeys, sessions, selectedSession, notify, setExportTargets]);
 
+  const handleOpenImport = useCallback(() => {
+    const generation = ++importProbeGeneration.current;
+    setImportProbes(null);
+    setImportOpen(true);
+    // Do not share an in-flight probe that started before this opening.
+    void queryClient
+      .cancelQueries({ queryKey: ["sessions-local-probes"], exact: true })
+      .then(() => {
+        if (generation !== importProbeGeneration.current) return;
+        return refetchLocalProbes();
+      })
+      .then((result) => {
+        if (generation === importProbeGeneration.current) {
+          setImportProbes(result?.isSuccess ? result.data : {});
+        }
+      });
+  }, [queryClient, refetchLocalProbes]);
+
   const hasOpenDialog = Boolean(
     exportTargets || importOpen || remapOpen || guideOpen || attestationOpen,
   );
@@ -510,12 +533,12 @@ export function SessionsPage() {
         handleOpenExport();
       } else {
         e.preventDefault();
-        setImportOpen(true);
+        handleOpenImport();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [visible, hasOpenDialog, handleOpenExport, setImportOpen]);
+  }, [visible, hasOpenDialog, handleOpenExport, handleOpenImport]);
 
   const toggleSelectSession = (stableKey: string, e: MouseEvent) => {
     e.stopPropagation();
@@ -767,10 +790,7 @@ export function SessionsPage() {
         </div>
 
         <div className="fy-sessions-top-actions">
-          <Button
-            dialogOriginRef={importOriginRef}
-            onClick={() => setImportOpen(true)}
-          >
+          <Button dialogOriginRef={importOriginRef} onClick={handleOpenImport}>
             <UploadSimpleIcon size={16} />
             <span>导入会话包 (⌘I)</span>
           </Button>
@@ -903,31 +923,27 @@ export function SessionsPage() {
         />
       )}
 
-      {importOpen !== null && (
-        <ImportPackageDialog
-          open={Boolean(importOpen)}
-          onOpenChange={(open) => {
-            if (!open) setImportOpen(null);
-          }}
-          onReadPackage={(path) => ports.sessions.readSessionPackage(path)}
-          onRestore={handleRestore}
-          onReviewRestore={handleReviewRestore}
-          onVerifyReadback={async (attemptId) => {
-            try {
-              return await ports.sessions.verifyNativeReadback(attemptId);
-            } finally {
-              await refreshRestoreAttempts().catch(() => undefined);
-              void refreshSessions();
-            }
-          }}
-          onPickPackageFile={() => ports.sessions.pickPackageFile()}
-          onPickDirectory={() => ports.sessions.pickDirectory()}
-          localProbes={localProbes}
-          initialTargetWorkspace={targetWorkspace}
-          originRef={importOriginRef}
-          onImportSuccess={() => void refreshSessions()}
-        />
-      )}
+      <ImportPackageDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onReadPackage={(path) => ports.sessions.readSessionPackage(path)}
+        onRestore={handleRestore}
+        onReviewRestore={handleReviewRestore}
+        onVerifyReadback={async (attemptId) => {
+          try {
+            return await ports.sessions.verifyNativeReadback(attemptId);
+          } finally {
+            await refreshRestoreAttempts().catch(() => undefined);
+            void refreshSessions();
+          }
+        }}
+        onPickPackageFile={() => ports.sessions.pickPackageFile()}
+        onPickDirectory={() => ports.sessions.pickDirectory()}
+        localProbes={importProbes}
+        initialTargetWorkspace={targetWorkspace}
+        originRef={importOriginRef}
+        onImportSuccess={() => void refreshSessions()}
+      />
 
       {remapOpen && (
         <RemapWorkspaceDialog
