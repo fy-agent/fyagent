@@ -251,15 +251,6 @@ printf 'FY_SSH_OK:%s\n' "$HOME"
     }
 }
 
-/// Checks which candidate relative paths already exist under remote `$HOME`.
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn probe_remote_existing_paths(
-    target: &ValidatedSshTarget,
-    rel_paths: &[&str],
-) -> Result<(Option<String>, HashSet<String>), String> {
-    probe_remote_existing_paths_at(target, rel_paths, None)
-}
-
 /// Checks which candidate relative paths already exist under the effective target root.
 pub fn probe_remote_existing_paths_at(
     target: &ValidatedSshTarget,
@@ -449,15 +440,6 @@ pub(crate) fn parse_push_apply_output(
         outcomes,
         warnings,
     }
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn apply_ssh_push(
-    target: &ValidatedSshTarget,
-    files: &[RenderedRemoteFile],
-    warnings: Vec<String>,
-) -> Result<RemotePushApplyResult, String> {
-    apply_ssh_push_at(target, None, "~/", files, warnings)
 }
 
 pub fn apply_ssh_push_at(
@@ -759,9 +741,12 @@ mod tests {
         );
 
         // 2. Live remote path existence probe
-        let (_, existing) =
-            probe_remote_existing_paths(&target, &[".codex/auth.json", ".claude/settings.json"])
-                .expect("probe remote paths");
+        let (_, existing) = probe_remote_existing_paths_at(
+            &target,
+            &[".codex/auth.json", ".claude/settings.json"],
+            None,
+        )
+        .expect("probe remote paths");
         assert!(existing.contains(".codex/auth.json"));
         assert!(!existing.contains(".claude/settings.json"));
 
@@ -794,7 +779,8 @@ mod tests {
                 content: Zeroizing::new(b"# Remote Rules\nShip clean code.\n".to_vec()),
             },
         ];
-        let applied = apply_ssh_push(&target, &files, Vec::new()).expect("apply ssh push");
+        let applied =
+            apply_ssh_push_at(&target, None, "~/", &files, Vec::new()).expect("apply ssh push");
         assert!(applied.ok, "apply failed: {:?}", applied);
         assert_eq!(applied.outcomes.len(), 3);
         assert_eq!(applied.outcomes[0].action, "updated");
