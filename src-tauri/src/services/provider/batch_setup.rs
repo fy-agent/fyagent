@@ -680,7 +680,11 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn omp_target_applies_and_rolls_back_cleanly_in_isolation() {
-        let _env = crate::omp_config::test_support::TestOmpEnv::new();
+        let home = tempfile::tempdir().unwrap();
+        let models_path = home.path().join(".omp").join("agent").join("models.yml");
+        let _env = crate::omp_config::test_support::TestOmpEnv::with_input(
+            home, None, None, None, None, None,
+        );
         let spec = BatchSetupTargetSpec {
             target: BatchSetupTargetId::Omp,
             provider_id: "deepseek".to_string(),
@@ -721,7 +725,7 @@ mod tests {
             after_rotate.default_model.as_deref(),
             Some("fyagent-deepseek/deepseek-v4-pro")
         );
-        let raw_models = std::fs::read_to_string(&after_rotate.models_path).unwrap();
+        let raw_models = std::fs::read_to_string(models_path).unwrap();
         assert!(!raw_models.contains("fyagent-fyagent-"));
         assert!(!raw_models.contains("sk-test-omp-batch"));
         assert!(raw_models.contains("sk-test-omp-rotated"));
