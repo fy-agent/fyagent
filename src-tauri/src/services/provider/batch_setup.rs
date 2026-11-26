@@ -849,10 +849,13 @@ mod tests {
         }
 
         // 2) omp: pre-existing comments, unrelated provider, and custom config keys must survive batch sync.
-        let _env = crate::omp_config::test_support::TestOmpEnv::new();
-        let initial_omp = omp_config::read_omp_config().unwrap();
-        let models_path = std::path::PathBuf::from(&initial_omp.models_path);
-        let config_path = std::path::PathBuf::from(&initial_omp.config_path);
+        let home = tempfile::tempdir().unwrap();
+        let agent_dir = home.path().join(".omp").join("agent");
+        let models_path = agent_dir.join("models.yml");
+        let config_path = agent_dir.join("config.yml");
+        let _env = crate::omp_config::test_support::TestOmpEnv::with_input(
+            home, None, None, None, None, None,
+        );
         std::fs::create_dir_all(models_path.parent().unwrap()).unwrap();
         std::fs::write(
             &models_path,
