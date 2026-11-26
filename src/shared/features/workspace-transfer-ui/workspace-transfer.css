@@ -22,8 +22,8 @@
 
 .fy-transfer-checks {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 8px 12px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px 14px;
 }
 
 .fy-transfer-check-row {
@@ -113,10 +113,39 @@
 
 .fy-transfer-file-path {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
   word-break: break-all;
+}
+
+.fy-transfer-file-summary {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--fy-text-secondary);
+}
+
+.fy-transfer-mapping-details {
+  border-top: 1px solid var(--fy-border-subtle);
+  padding-top: 8px;
+}
+
+.fy-transfer-mapping-details > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--fy-text-secondary);
+  user-select: none;
+}
+
+.fy-transfer-mapping-body {
+  margin-top: 10px;
+}
+
+.fy-transfer-profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .fy-transfer-field {

@@ -1,6 +1,6 @@
 [[permission]]
 identifier = "allow-workspace-transfer"
-description = "Allows bounded portable workspace pack preview/export/inspection/import with native file pickers and agentless SSH configuration discovery, probing, preview, and stdin push."
+description = "Allows bounded portable workspace pack preview/export/inspection/import with native file pickers, SSH configuration discovery, probing, profiles, preview and stdin push, and Windows WSL configuration sync."
 commands.allow = [
   "pick_workspace_pack_export_path",
   "pick_workspace_pack_file",
@@ -12,4 +12,10 @@ commands.allow = [
   "test_ssh_target",
   "preview_ssh_config_push",
   "apply_ssh_config_push",
+  "list_ssh_push_profiles",
+  "save_ssh_push_profile",
+  "delete_ssh_push_profile",
+  "list_wsl_distros",
+  "preview_wsl_config_sync",
+  "apply_wsl_config_sync",
 ]

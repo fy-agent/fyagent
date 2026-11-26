@@ -1673,10 +1673,16 @@ mod tests {
             "test_ssh_target",
             "preview_ssh_config_push",
             "apply_ssh_config_push",
+            "list_ssh_push_profiles",
+            "save_ssh_push_profile",
+            "delete_ssh_push_profile",
+            "list_wsl_distros",
+            "preview_wsl_config_sync",
+            "apply_wsl_config_sync",
         ] {
             assert!(registered.contains(command));
         }
-        assert_eq!(registered.len(), 424, "review intentional handler changes");
+        assert_eq!(registered.len(), 430, "review intentional handler changes");
         assert_eq!(
             allowed, registered,
             "every registered application command must be granted exactly once while an app ACL manifest exists"

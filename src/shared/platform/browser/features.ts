@@ -281,6 +281,17 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       testSshTarget: rejectNativeOnly,
       previewSshPush: rejectNativeOnly,
       applySshPush: rejectNativeOnly,
+      listSshPushProfiles: async () => [],
+      saveSshPushProfile: rejectNativeOnly,
+      deleteSshPushProfile: rejectNativeOnly,
+      listWslDistros: async () => ({
+        supported: false,
+        available: false,
+        distros: [],
+        message: "WSL 同步仅在 Windows 桌面应用中可用。",
+      }),
+      previewWslSync: rejectNativeOnly,
+      applyWslSync: rejectNativeOnly,
     },
   };
 }

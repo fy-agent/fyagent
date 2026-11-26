@@ -31,7 +31,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "bffe45273ac7340a60f3609c99106e846e676082ffe1959a9ed48910c4465125"
+      "b91ae48d49bde279aa57f233923cefb74d836ec500b94d522e749a2a96dc420e"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "fb24de3a6e0da8a69e1b8011eff5beb0654de8649deecc66d8be05a537646720"
+      "415af155b437b5432ea210701f479656a0dcf8eff245d5c7974b78b8137f114a"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -350,8 +350,12 @@
       "6c587d547b7fae6adac402781a50776886572faa65ad17ab4c16cc153309b882"
     ],
     [
+      "src-tauri/src/services/remote_push/subsystem.rs",
+      "3d56945a31a6012414ba13ed493aa45593e5b567b81e1a88f7824f5f7e2d0c7c"
+    ],
+    [
       "src-tauri/src/services/remote_push/transport.rs",
-      "dee87b114d15525c6608e1b52002559764d423490c8e7d3a10155419b56b9f2b"
+      "e82949c998334b6f2e45d4c12979008df5e6ed7230a863128dbf1fa46ccabf2b"
     ],
     [
       "src-tauri/src/services/secret/mod.rs",
@@ -595,7 +599,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "2ee68ce6f6c4c4aaab091b548ddbb8ef42ce5e86af920a35e988cdc69263ef37"
+      "0c65fa5d8227b3522dca68b8b5b2121e94ed30a4c2435093d8f4c815cd2c1af4"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

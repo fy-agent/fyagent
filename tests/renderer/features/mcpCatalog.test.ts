@@ -52,6 +52,7 @@ describe("MCP curated catalog", () => {
       "howtocook",
       "train-12306",
       "duckduckgo",
+      "keenable",
       "cloudbase",
       "aliyun-dms",
       "aliyun-dataworks",
@@ -61,7 +62,7 @@ describe("MCP curated catalog", () => {
       "dbhub",
       "starrocks",
     ]);
-    expect(MCP_CATALOG).toHaveLength(35);
+    expect(MCP_CATALOG).toHaveLength(36);
     expect(MCP_CATALOG.every((entry) => entry.installable)).toBe(true);
     expect(catalogRequiresConfig(item("playwright"))).toBe(false);
     expect(catalogRequiresConfig(item("antv-chart"))).toBe(false);
@@ -532,5 +533,29 @@ describe("MCP curated catalog", () => {
       args: ["duckduckgo-mcp-server"],
       env: { DDG_REGION: "cn-zh" },
     });
+    expect(item("keenable").categories).toEqual(["basics"]);
+    expect(item("keenable").providerGroup).toBe("general");
+    expect(item("keenable").privilege).toBe("read");
+    expect(item("keenable").build({}, ["claude"], "macos").server).toEqual({
+      type: "http",
+      url: "https://api.keenable.ai/mcp",
+      headers: {
+        "X-Keenable-Title": "FyAgent",
+      },
+    });
+    const keyedKeenable = item("keenable").build(
+      { apiKey: "kn-secret-123" },
+      ["codex"],
+      "windows",
+    );
+    expect(keyedKeenable.server).toEqual({
+      type: "http",
+      url: "https://api.keenable.ai/mcp",
+      headers: {
+        "X-Keenable-Title": "FyAgent",
+        Authorization: "Bearer kn-secret-123",
+      },
+    });
+    expect(catalogSearchText(item("keenable"))).not.toContain("kn-secret-123");
   });
 });

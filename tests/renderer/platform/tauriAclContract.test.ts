@@ -134,7 +134,7 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(185);
+    expect(renderer.commands.size).toBe(191);
     for (const retiredCommand of [
       "get_global_proxy_config",
       "update_global_proxy_config",
@@ -266,7 +266,17 @@ describe("Native ACL contract", () => {
     const modelLoop = permissions.get("allow-model-management-loop");
     const workspaceTransfer = permissions.get("allow-workspace-transfer");
     expect(modelLoop?.size).toBe(16);
-    expect(workspaceTransfer?.size).toBe(10);
+    expect(workspaceTransfer?.size).toBe(16);
+    for (const command of [
+      "list_ssh_push_profiles",
+      "save_ssh_push_profile",
+      "delete_ssh_push_profile",
+      "list_wsl_distros",
+      "preview_wsl_config_sync",
+      "apply_wsl_config_sync",
+    ]) {
+      expect(workspaceTransfer?.has(command), command).toBe(true);
+    }
 
     for (const [identifier, commands] of permissions.entries()) {
       if (identifier === "allow-legacy-application-commands") continue;
