@@ -1,0 +1,3 @@
+{"file":"docs/fyagent/development/validation.md","reason":"Separate local, native and remote evidence"}
+{"file":".trellis/spec/backend/session-migration.md","reason":"Preserve restore capability and native checks"}
+{"file":".trellis/spec/frontend/security-boundaries.md","reason":"Verify ACL and renderer admission boundaries after conflict resolution"}
