@@ -373,6 +373,17 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await workspaceTransfer()).previewSshPush(...args),
       applySshPush: async (...args) =>
         (await workspaceTransfer()).applySshPush(...args),
+      listSshPushProfiles: async () =>
+        (await workspaceTransfer()).listSshPushProfiles(),
+      saveSshPushProfile: async (...args) =>
+        (await workspaceTransfer()).saveSshPushProfile(...args),
+      deleteSshPushProfile: async (...args) =>
+        (await workspaceTransfer()).deleteSshPushProfile(...args),
+      listWslDistros: async () => (await workspaceTransfer()).listWslDistros(),
+      previewWslSync: async (...args) =>
+        (await workspaceTransfer()).previewWslSync(...args),
+      applyWslSync: async (...args) =>
+        (await workspaceTransfer()).applyWslSync(...args),
     },
     tooling: createGrokToolingPort(),
   };

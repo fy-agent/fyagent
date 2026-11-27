@@ -124,11 +124,10 @@ const request: RestoreRequest = restoreRequestSchema.parse({
 });
 
 async function openImportDelegates() {
-  if (!delegates.import) {
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "导入会话包 (⌘I)" }));
-    await waitFor(() => expect(delegates.import).not.toBeNull());
-  }
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "导入会话包 (⌘I)" }));
+  await waitFor(() => expect(delegates.import?.open).toBe(true));
+  await waitFor(() => expect(delegates.import?.localProbes).toBeTruthy());
   const props = delegates.import!;
   if (!props.onReviewRestore || !props.onVerifyReadback)
     throw new Error("Page receipt readback delegates missing");
@@ -253,7 +252,7 @@ describe("Sessions visibility query ownership", () => {
         receipt,
       ]);
       expect(ports.sessions.listSessions).toHaveBeenCalledTimes(1);
-      expect(ports.sessions.probeLocalProvider).toHaveBeenCalledTimes(7);
+      expect(ports.sessions.probeLocalProvider).toHaveBeenCalledTimes(14);
       if (
         operation === "restore-rejection" ||
         operation === "review-rejection"
@@ -392,7 +391,7 @@ describe("Sessions visibility query ownership", () => {
       expect(receipt.stage).toBe("nativeWritten");
       expect(ports.sessions.listRestoreAttempts).toHaveBeenCalledTimes(2);
       expect(ports.sessions.listSessions).toHaveBeenCalledTimes(1);
-      expect(ports.sessions.probeLocalProvider).toHaveBeenCalledTimes(7);
+      expect(ports.sessions.probeLocalProvider).toHaveBeenCalledTimes(14);
       if (operation.endsWith("rejection")) {
         expect(error).toBe(operationError);
         expect(result).toBeUndefined();
@@ -461,6 +460,6 @@ describe("Sessions visibility query ownership", () => {
     expect(view.client().getQueryData(["sessions-attempts"])).toEqual([after]);
     expect(ports.sessions.restoreSessionPackage).toHaveBeenCalledTimes(1);
     expect(ports.sessions.listSessions).toHaveBeenCalledTimes(1);
-    expect(ports.sessions.probeLocalProvider).toHaveBeenCalledTimes(7);
+    expect(ports.sessions.probeLocalProvider).toHaveBeenCalledTimes(14);
   });
 });

@@ -4,11 +4,13 @@ import { useId, useState } from "react";
 import { useFeatures } from "../provider";
 import { featureKeys } from "../queries";
 import type {
+  RemotePathMapping,
   RemotePushApplyResult,
   RemotePushPreviewResult,
   SessionProjectionMode,
   SshConnectionTestResult,
   SshHostEntry,
+  SshPushProfile,
   WorkspacePackExportOptions,
   WorkspacePackExportOutcome,
   WorkspacePackExportPreview,
@@ -28,13 +30,109 @@ import {
 } from "../../ui/primitives";
 import "./workspace-transfer.css";
 
-type TransferTab = "export" | "import" | "ssh";
+type TransferTab = "export" | "import" | "ssh" | "wsl";
 
 const TRANSFER_TABS: ReadonlyArray<{ id: TransferTab; label: string }> = [
   { id: "export", label: "打包迁移包 (≤100MB)" },
   { id: "import", label: "导入迁移包" },
   { id: "ssh", label: "推送到 SSH 远端" },
+  { id: "wsl", label: "同步到 WSL" },
 ];
+
+interface PathMappingFormState {
+  homeRoot: string;
+  claudeDir: string;
+  codexDir: string;
+  opencodeDir: string;
+  ompDir: string;
+}
+
+function emptyPathMappingForm(): PathMappingFormState {
+  return {
+    homeRoot: "",
+    claudeDir: "",
+    codexDir: "",
+    opencodeDir: "",
+    ompDir: "",
+  };
+}
+
+function toOptionalPathMapping(
+  form: PathMappingFormState,
+): RemotePathMapping | null {
+  const mapping: RemotePathMapping = {};
+  if (form.homeRoot.trim()) mapping.homeRoot = form.homeRoot.trim();
+  if (form.claudeDir.trim()) mapping.claudeDir = form.claudeDir.trim();
+  if (form.codexDir.trim()) mapping.codexDir = form.codexDir.trim();
+  if (form.opencodeDir.trim()) mapping.opencodeDir = form.opencodeDir.trim();
+  if (form.ompDir.trim()) mapping.ompDir = form.ompDir.trim();
+  return Object.keys(mapping).length > 0 ? mapping : null;
+}
+
+function PathMappingFields({
+  value,
+  onChange,
+  idPrefix,
+}: {
+  value: PathMappingFormState;
+  onChange: (next: PathMappingFormState) => void;
+  idPrefix: string;
+}) {
+  return (
+    <details className="fy-transfer-mapping-details">
+      <summary>自定义目录映射（选填，留空默认使用 $HOME 标准目录）</summary>
+      <div className="fy-transfer-grid fy-transfer-mapping-body">
+        <label className="fy-transfer-field">
+          <span>目标根目录</span>
+          <Input
+            id={`${idPrefix}-home-root`}
+            value={value.homeRoot}
+            onChange={(e) => onChange({ ...value, homeRoot: e.target.value })}
+            placeholder="留空默认 ~，如 ~/work-env"
+          />
+        </label>
+        <label className="fy-transfer-field">
+          <span>Claude 目录</span>
+          <Input
+            id={`${idPrefix}-claude-dir`}
+            value={value.claudeDir}
+            onChange={(e) => onChange({ ...value, claudeDir: e.target.value })}
+            placeholder=".claude"
+          />
+        </label>
+        <label className="fy-transfer-field">
+          <span>Codex 目录</span>
+          <Input
+            id={`${idPrefix}-codex-dir`}
+            value={value.codexDir}
+            onChange={(e) => onChange({ ...value, codexDir: e.target.value })}
+            placeholder=".codex"
+          />
+        </label>
+        <label className="fy-transfer-field">
+          <span>OpenCode 目录</span>
+          <Input
+            id={`${idPrefix}-opencode-dir`}
+            value={value.opencodeDir}
+            onChange={(e) =>
+              onChange({ ...value, opencodeDir: e.target.value })
+            }
+            placeholder=".config/opencode"
+          />
+        </label>
+        <label className="fy-transfer-field">
+          <span>omp 目录</span>
+          <Input
+            id={`${idPrefix}-omp-dir`}
+            value={value.ompDir}
+            onChange={(e) => onChange({ ...value, ompDir: e.target.value })}
+            placeholder=".omp/agent"
+          />
+        </label>
+      </div>
+    </details>
+  );
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -106,10 +204,21 @@ export function WorkspaceTransferDialog({
     queryFn: () => ports.workspaceTransfer.listSshHosts(),
     enabled: open && tab === "ssh",
   });
+  const sshProfilesQuery = useQuery({
+    queryKey: featureKeys.sshPushProfiles,
+    queryFn: () => ports.workspaceTransfer.listSshPushProfiles(),
+    enabled: open && tab === "ssh",
+  });
   const [sshHost, setSshHost] = useState("");
   const [sshUser, setSshUser] = useState("");
   const [sshPort, setSshPort] = useState("");
   const [sshIdentityFile, setSshIdentityFile] = useState("");
+  const [sshPathMapping, setSshPathMapping] =
+    useState<PathMappingFormState>(emptyPathMappingForm);
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [saveProfileOpen, setSaveProfileOpen] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
   const [sshSelection, setSshSelection] = useState({
     includeModels: true,
     includeMcp: true,
@@ -126,6 +235,37 @@ export function WorkspaceTransferDialog({
   );
   const [sshBusy, setSshBusy] = useState(false);
   const [sshError, setSshError] = useState<string | null>(null);
+
+  // ── WSL sync state ──
+  const wslDistrosQuery = useQuery({
+    queryKey: featureKeys.wslDistros,
+    queryFn: () => ports.workspaceTransfer.listWslDistros(),
+    enabled: open && tab === "wsl",
+  });
+  const [wslDistroInput, setWslDistroInput] = useState("");
+  const [wslPathMapping, setWslPathMapping] =
+    useState<PathMappingFormState>(emptyPathMappingForm);
+  const [wslSelection, setWslSelection] = useState({
+    includeModels: true,
+    includeMcp: true,
+    includePrompts: true,
+    includeSkills: true,
+  });
+  const [wslPreview, setWslPreview] = useState<RemotePushPreviewResult | null>(
+    null,
+  );
+  const [wslOutcome, setWslOutcome] = useState<RemotePushApplyResult | null>(
+    null,
+  );
+  const [wslBusy, setWslBusy] = useState(false);
+  const [wslError, setWslError] = useState<string | null>(null);
+
+  const wslStatus = wslDistrosQuery.data;
+  const effectiveWslDistro =
+    wslDistroInput.trim() ||
+    wslStatus?.distros.find((d) => d.isDefault)?.name ||
+    wslStatus?.distros[0]?.name ||
+    "";
 
   const updateExportOption = <K extends keyof WorkspacePackExportOptions>(
     key: K,
@@ -337,11 +477,87 @@ export function WorkspaceTransferDialog({
   };
 
   const applyHostEntry = (entry: SshHostEntry) => {
+    setActiveProfileId(null);
     setSshHost(entry.alias);
     setSshUser(entry.user ?? "");
     setSshPort(entry.port ? String(entry.port) : "");
     setSshIdentityFile(entry.identityFile ?? "");
+    setSshPathMapping(emptyPathMappingForm());
     resetSshTransientState();
+  };
+
+  const applySavedProfile = (profile: SshPushProfile) => {
+    setActiveProfileId(profile.id);
+    setProfileName(profile.name);
+    setSshHost(profile.host);
+    setSshUser(profile.user ?? "");
+    setSshPort(profile.port ? String(profile.port) : "");
+    setSshIdentityFile(profile.identityFile ?? "");
+    setSshPathMapping({
+      homeRoot: profile.pathMapping.homeRoot ?? "",
+      claudeDir: profile.pathMapping.claudeDir ?? "",
+      codexDir: profile.pathMapping.codexDir ?? "",
+      opencodeDir: profile.pathMapping.opencodeDir ?? "",
+      ompDir: profile.pathMapping.ompDir ?? "",
+    });
+    resetSshTransientState();
+  };
+
+  const handleSaveProfile = async () => {
+    if (!sshHost.trim()) {
+      setSshError("请先填写 SSH 主机名再保存常用主机。");
+      return;
+    }
+    const validated = buildValidatedSshTarget();
+    if (!validated.ok) {
+      setSshError(validated.error);
+      return;
+    }
+    const trimmedName = profileName.trim() || sshHost.trim();
+    setProfileSaving(true);
+    setSshError(null);
+    try {
+      const saved = await ports.workspaceTransfer.saveSshPushProfile({
+        ...(activeProfileId ? { id: activeProfileId } : {}),
+        name: trimmedName,
+        host: validated.target.host,
+        user: validated.target.user,
+        port: validated.target.port,
+        identityFile: validated.target.identityFile,
+        pathMapping: toOptionalPathMapping(sshPathMapping),
+      });
+      setActiveProfileId(saved.id);
+      setSaveProfileOpen(false);
+      await queryClient.invalidateQueries({
+        queryKey: featureKeys.sshPushProfiles,
+      });
+    } catch (err) {
+      setSshError(
+        err instanceof Error ? err.message : "保存常用 SSH 主机失败。",
+      );
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleDeleteProfile = async (profile: SshPushProfile) => {
+    setProfileSaving(true);
+    setSshError(null);
+    try {
+      await ports.workspaceTransfer.deleteSshPushProfile(profile.id);
+      if (activeProfileId === profile.id) {
+        setActiveProfileId(null);
+      }
+      await queryClient.invalidateQueries({
+        queryKey: featureKeys.sshPushProfiles,
+      });
+    } catch (err) {
+      setSshError(
+        err instanceof Error ? err.message : "删除常用 SSH 主机失败。",
+      );
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   const handleTestSsh = async () => {
@@ -382,9 +598,11 @@ export function WorkspaceTransferDialog({
     setSshError(null);
     setSshOutcome(null);
     try {
+      const pathMapping = toOptionalPathMapping(sshPathMapping);
       const preview = await ports.workspaceTransfer.previewSshPush({
         target: validated.target,
         selection: sshSelection,
+        ...(pathMapping ? { pathMapping } : {}),
       });
       setSshPreview(preview);
     } catch (err) {
@@ -406,15 +624,67 @@ export function WorkspaceTransferDialog({
     setSshBusy(true);
     setSshError(null);
     try {
+      const pathMapping = toOptionalPathMapping(sshPathMapping);
       const outcome = await ports.workspaceTransfer.applySshPush({
         target: validated.target,
         selection: sshSelection,
+        ...(pathMapping ? { pathMapping } : {}),
       });
       setSshOutcome(outcome);
     } catch (err) {
       setSshError(err instanceof Error ? err.message : "远程配置推送失败。");
     } finally {
       setSshBusy(false);
+    }
+  };
+
+  const resetWslTransientState = () => {
+    setWslPreview(null);
+    setWslOutcome(null);
+    setWslError(null);
+  };
+
+  const handlePreviewWsl = async () => {
+    if (!effectiveWslDistro) {
+      setWslError("请先选择或填写目标 WSL 发行版名称。");
+      return;
+    }
+    setWslBusy(true);
+    setWslError(null);
+    setWslOutcome(null);
+    try {
+      const pathMapping = toOptionalPathMapping(wslPathMapping);
+      const preview = await ports.workspaceTransfer.previewWslSync({
+        distro: effectiveWslDistro,
+        selection: wslSelection,
+        ...(pathMapping ? { pathMapping } : {}),
+      });
+      setWslPreview(preview);
+    } catch (err) {
+      setWslError(
+        err instanceof Error ? err.message : "生成 WSL 同步清单失败。",
+      );
+    } finally {
+      setWslBusy(false);
+    }
+  };
+
+  const handleApplyWsl = async () => {
+    if (!effectiveWslDistro) return;
+    setWslBusy(true);
+    setWslError(null);
+    try {
+      const pathMapping = toOptionalPathMapping(wslPathMapping);
+      const outcome = await ports.workspaceTransfer.applyWslSync({
+        distro: effectiveWslDistro,
+        selection: wslSelection,
+        ...(pathMapping ? { pathMapping } : {}),
+      });
+      setWslOutcome(outcome);
+    } catch (err) {
+      setWslError(err instanceof Error ? err.message : "同步到 WSL 失败。");
+    } finally {
+      setWslBusy(false);
     }
   };
 
@@ -452,7 +722,7 @@ export function WorkspaceTransferDialog({
         onOpenChange(next);
       }}
       title="环境迁移与远程推送"
-      description="打包 ≤100 MiB 投影式迁移包带入新电脑或随身硬件，或免客户端直接推送配置文件至 SSH 远端主机。"
+      description="打包 ≤100 MiB 投影式迁移包带入新电脑，或免客户端直接同步配置至 SSH 远端主机与 Windows WSL 发行版。"
       actions={
         <>
           <Button onClick={handleClose}>关闭</Button>
@@ -480,32 +750,65 @@ export function WorkspaceTransferDialog({
             >
               {importBusy ? "正在导入…" : "确认导入所选内容"}
             </Button>
-          ) : sshPreview && !sshOutcome ? (
+          ) : tab === "ssh" ? (
+            sshPreview && !sshOutcome ? (
+              <>
+                <Button
+                  disabled={sshBusy}
+                  onClick={() => {
+                    setSshPreview(null);
+                    setSshOutcome(null);
+                  }}
+                >
+                  返回修改
+                </Button>
+                <Button
+                  className="fy-control-button-primary"
+                  disabled={sshBusy || sshPreview.files.length === 0}
+                  onClick={() => void handleApplySsh()}
+                >
+                  {sshBusy ? "正在推送…" : "确认推送配置文件"}
+                </Button>
+              </>
+            ) : (
+              <Button
+                className="fy-control-button-primary"
+                disabled={sshBusy}
+                onClick={() => void handlePreviewSsh()}
+              >
+                {sshBusy ? "正在探测…" : "预览远端推送清单"}
+              </Button>
+            )
+          ) : wslPreview && !wslOutcome ? (
             <>
               <Button
-                disabled={sshBusy}
+                disabled={wslBusy}
                 onClick={() => {
-                  setSshPreview(null);
-                  setSshOutcome(null);
+                  setWslPreview(null);
+                  setWslOutcome(null);
                 }}
               >
                 返回修改
               </Button>
               <Button
                 className="fy-control-button-primary"
-                disabled={sshBusy || sshPreview.files.length === 0}
-                onClick={() => void handleApplySsh()}
+                disabled={
+                  wslBusy ||
+                  wslPreview.files.length === 0 ||
+                  wslStatus?.supported === false
+                }
+                onClick={() => void handleApplyWsl()}
               >
-                {sshBusy ? "正在推送…" : "确认推送配置文件"}
+                {wslBusy ? "正在同步…" : "确认同步到 WSL"}
               </Button>
             </>
           ) : (
             <Button
               className="fy-control-button-primary"
-              disabled={sshBusy}
-              onClick={() => void handlePreviewSsh()}
+              disabled={wslBusy || wslStatus?.supported === false}
+              onClick={() => void handlePreviewWsl()}
             >
-              {sshBusy ? "正在探测…" : "预览远端推送清单"}
+              {wslBusy ? "正在探测…" : "预览 WSL 同步清单"}
             </Button>
           )}
         </>
@@ -942,6 +1245,32 @@ export function WorkspaceTransferDialog({
 
             <div className="fy-transfer-card">
               <strong>1. 选择或填写 SSH 远程主机</strong>
+              {sshProfilesQuery.data && sshProfilesQuery.data.length > 0 ? (
+                <div className="fy-transfer-chip-row">
+                  <span>常用主机：</span>
+                  {sshProfilesQuery.data.map((profile) => (
+                    <span key={profile.id} className="fy-transfer-profile-chip">
+                      <Button
+                        className={
+                          activeProfileId === profile.id
+                            ? "fy-control-button-primary"
+                            : undefined
+                        }
+                        onClick={() => applySavedProfile(profile)}
+                      >
+                        {profile.name} ({profile.host})
+                      </Button>
+                      <Button
+                        disabled={profileSaving}
+                        aria-label={`删除常用主机 ${profile.name}`}
+                        onClick={() => void handleDeleteProfile(profile)}
+                      >
+                        删除
+                      </Button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               {sshHostsQuery.data && sshHostsQuery.data.length > 0 ? (
                 <div className="fy-transfer-chip-row">
                   <span>~/.ssh/config 发现：</span>
@@ -949,7 +1278,7 @@ export function WorkspaceTransferDialog({
                     <Button
                       key={entry.alias}
                       className={
-                        sshHost === entry.alias
+                        !activeProfileId && sshHost === entry.alias
                           ? "fy-control-button-primary"
                           : undefined
                       }
@@ -1008,9 +1337,26 @@ export function WorkspaceTransferDialog({
                   />
                 </label>
               </div>
+              <PathMappingFields
+                idPrefix="ssh-map"
+                value={sshPathMapping}
+                onChange={(next) => {
+                  setSshPathMapping(next);
+                  resetSshTransientState();
+                }}
+              />
               <div className="fy-transfer-chip-row">
                 <Button disabled={sshBusy} onClick={() => void handleTestSsh()}>
                   测试 SSH 连通性
+                </Button>
+                <Button
+                  disabled={sshBusy || profileSaving}
+                  onClick={() => {
+                    setProfileName((prev) => prev || sshHost.trim());
+                    setSaveProfileOpen((openForm) => !openForm);
+                  }}
+                >
+                  {saveProfileOpen ? "取消保存" : "存为常用主机"}
                 </Button>
                 {sshTestResult ? (
                   <Badge tone={sshTestResult.ok ? "accent" : "warning"}>
@@ -1020,6 +1366,27 @@ export function WorkspaceTransferDialog({
                   </Badge>
                 ) : null}
               </div>
+              {saveProfileOpen ? (
+                <div className="fy-transfer-field-row">
+                  <label className="fy-transfer-field">
+                    <span>
+                      常用主机名称（仅存连接信息与目录映射，不保存密钥）
+                    </span>
+                    <Input
+                      value={profileName}
+                      onChange={(e) => setProfileName(e.target.value)}
+                      placeholder="例如 GPU 开发机"
+                    />
+                  </label>
+                  <Button
+                    className="fy-control-button-primary"
+                    disabled={profileSaving}
+                    onClick={() => void handleSaveProfile()}
+                  >
+                    {profileSaving ? "正在保存…" : "保存主机档案"}
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             <div className="fy-transfer-card">
@@ -1029,7 +1396,7 @@ export function WorkspaceTransferDialog({
                   [
                     [
                       "includeModels",
-                      "CLI 模型配置 (Claude/Codex/OpenCode/omp)",
+                      "CLI 模型配置 (Claude / Codex / OpenCode / omp)",
                     ],
                     ["includeMcp", "MCP 清单"],
                     ["includePrompts", "全局提示词 (CLAUDE.md / AGENTS.md)"],
@@ -1096,6 +1463,11 @@ export function WorkspaceTransferDialog({
                         {file.containsSecret ? (
                           <Badge tone="neutral">chmod {file.mode}</Badge>
                         ) : null}
+                        {file.summary ? (
+                          <span className="fy-transfer-file-summary">
+                            {file.summary}
+                          </span>
+                        ) : null}
                       </span>
                       <span>{formatBytes(file.bytes)}</span>
                     </li>
@@ -1135,6 +1507,232 @@ export function WorkspaceTransferDialog({
                 ))}
               </section>
             ) : null}
+          </div>
+        </FeatureTabPanel>
+
+        <FeatureTabPanel
+          tabsId={tabsId}
+          value="wsl"
+          active={tab === "wsl"}
+          layout="flow"
+        >
+          <div className="fy-transfer-body">
+            {wslStatus?.supported === false ? (
+              <InlineNotice tone="info">
+                {wslStatus.message ||
+                  "WSL 同步仅在 Windows 电脑可用；在 macOS 上请使用「打包迁移包」或「推送到 SSH 远端」。"}
+              </InlineNotice>
+            ) : (
+              <>
+                <InlineNotice tone="info">
+                  手动同步模式：将本机已接管的 CLI 模型、MCP、提示词与 Skills
+                  安全同步至所选 WSL 发行版，覆盖前自动备份至{" "}
+                  <code>~/.fyagent-wsl-backups/</code>
+                  ；未接管软件（如 TRAE/QoderWork）及官方 OAuth 登录不会同步。
+                </InlineNotice>
+
+                <div className="fy-transfer-card">
+                  <strong>1. 选择目标 WSL 发行版</strong>
+                  {wslDistrosQuery.isLoading ? (
+                    <div className="fy-transfer-loading">
+                      <Spinner label="正在检测 WSL 发行版" />
+                      <span>正在检测本机 WSL 发行版…</span>
+                    </div>
+                  ) : wslStatus?.distros && wslStatus.distros.length > 0 ? (
+                    <div className="fy-transfer-chip-row">
+                      <span>已安装发行版：</span>
+                      {wslStatus.distros.map((distro) => (
+                        <Button
+                          key={distro.name}
+                          className={
+                            effectiveWslDistro === distro.name
+                              ? "fy-control-button-primary"
+                              : undefined
+                          }
+                          onClick={() => {
+                            setWslDistroInput(distro.name);
+                            resetWslTransientState();
+                          }}
+                        >
+                          {distro.name} ({distro.state} · WSL {distro.version}
+                          {distro.isDefault ? " · 默认" : ""})
+                        </Button>
+                      ))}
+                    </div>
+                  ) : wslStatus?.message ? (
+                    <InlineNotice tone="warning">
+                      {wslStatus.message}
+                    </InlineNotice>
+                  ) : null}
+
+                  <div className="fy-transfer-field-row">
+                    <label className="fy-transfer-field">
+                      <span>发行版名称</span>
+                      <Input
+                        value={wslDistroInput}
+                        onChange={(e) => {
+                          setWslDistroInput(e.target.value);
+                          resetWslTransientState();
+                        }}
+                        placeholder={
+                          effectiveWslDistro || "输入已安装的发行版名称"
+                        }
+                      />
+                    </label>
+                    <Button
+                      disabled={wslDistrosQuery.isFetching || wslBusy}
+                      onClick={() => void wslDistrosQuery.refetch()}
+                    >
+                      刷新发行版列表
+                    </Button>
+                  </div>
+
+                  <PathMappingFields
+                    idPrefix="wsl-map"
+                    value={wslPathMapping}
+                    onChange={(next) => {
+                      setWslPathMapping(next);
+                      resetWslTransientState();
+                    }}
+                  />
+                </div>
+
+                <div className="fy-transfer-card">
+                  <strong>2. 勾选要同步到 WSL 的配置文件</strong>
+                  <div className="fy-transfer-checks">
+                    {(
+                      [
+                        [
+                          "includeModels",
+                          "CLI 模型配置 (Claude / Codex / OpenCode / omp)",
+                        ],
+                        ["includeMcp", "MCP 清单（自动适配 POSIX 命令）"],
+                        [
+                          "includePrompts",
+                          "全局提示词 (CLAUDE.md / AGENTS.md)",
+                        ],
+                        ["includeSkills", "Skills 纯文本目录"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <label key={key} className="fy-transfer-check-row">
+                        <Checkbox
+                          checked={wslSelection[key]}
+                          onCheckedChange={(v) => {
+                            setWslSelection((prev) => ({
+                              ...prev,
+                              [key]: Boolean(v),
+                            }));
+                            resetWslTransientState();
+                          }}
+                          label={label}
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {wslBusy ? (
+                  <div className="fy-transfer-loading">
+                    <Spinner label="正在与 WSL 通信" />
+                    <span>正在探测或同步 WSL 配置文件…</span>
+                  </div>
+                ) : null}
+                {wslError ? (
+                  <InlineNotice tone="error">{wslError}</InlineNotice>
+                ) : null}
+
+                {wslPreview && !wslOutcome ? (
+                  <section
+                    className="fy-transfer-card"
+                    aria-label="WSL 待同步文件预览"
+                  >
+                    <div className="fy-transfer-budget-header">
+                      <strong>
+                        目标 {wslPreview.destination} · 共{" "}
+                        {wslPreview.files.length} 个文件（
+                        {formatBytes(wslPreview.totalBytes)}）
+                      </strong>
+                      <Badge tone={wslPreview.reachable ? "accent" : "warning"}>
+                        {wslPreview.reachable ? "已探测 WSL 状态" : "离线预览"}
+                      </Badge>
+                    </div>
+                    <ul className="fy-transfer-file-list">
+                      {wslPreview.files.map((file) => (
+                        <li
+                          key={file.remotePath}
+                          className="fy-transfer-file-row"
+                        >
+                          <span className="fy-transfer-file-path">
+                            <code>{file.remotePath}</code>
+                            <Badge
+                              tone={
+                                file.action === "update" ? "warning" : "accent"
+                              }
+                            >
+                              {file.action === "update"
+                                ? "备份后更新"
+                                : file.action === "create"
+                                  ? "新建"
+                                  : "待写入"}
+                            </Badge>
+                            {file.containsSecret ? (
+                              <Badge tone="neutral">chmod {file.mode}</Badge>
+                            ) : null}
+                            {file.summary ? (
+                              <span className="fy-transfer-file-summary">
+                                {file.summary}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span>{formatBytes(file.bytes)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {wslPreview.warnings.map((w, idx) => (
+                      <InlineNotice key={idx} tone="warning">
+                        {w}
+                      </InlineNotice>
+                    ))}
+                  </section>
+                ) : null}
+
+                {wslOutcome ? (
+                  <section
+                    className="fy-transfer-card"
+                    aria-label="WSL 同步结果"
+                  >
+                    <InlineNotice tone={wslOutcome.ok ? "info" : "warning"}>
+                      {wslOutcome.ok
+                        ? "WSL 同步已完成"
+                        : "部分文件同步失败（已自动回滚）"}{" "}
+                      · 备份目录：<code>{wslOutcome.backupDir}</code>
+                    </InlineNotice>
+                    <ul className="fy-transfer-file-list">
+                      {wslOutcome.outcomes.map((item) => (
+                        <li
+                          key={item.remotePath}
+                          className="fy-transfer-file-row"
+                        >
+                          <span className="fy-transfer-file-path">
+                            <Badge tone={item.ok ? "accent" : "warning"}>
+                              {item.ok ? "已生效" : "失败"}
+                            </Badge>
+                            <code>{item.remotePath}</code>
+                          </span>
+                          <span>{item.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {wslOutcome.warnings.map((w, idx) => (
+                      <InlineNotice key={`wsl-w-${idx}`} tone="warning">
+                        {w}
+                      </InlineNotice>
+                    ))}
+                  </section>
+                ) : null}
+              </>
+            )}
           </div>
         </FeatureTabPanel>
       </div>

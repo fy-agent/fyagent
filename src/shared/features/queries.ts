@@ -70,6 +70,8 @@ export const featureKeys = {
     "custom-gateway-templates",
   ] as const,
   sshHosts: [scope, "workspace-transfer", "ssh-hosts"] as const,
+  sshPushProfiles: [scope, "workspace-transfer", "ssh-push-profiles"] as const,
+  wslDistros: [scope, "workspace-transfer", "wsl-distros"] as const,
   skills: [scope, "skills", "installed"] as const,
   skillBackups: [scope, "skills", "backups"] as const,
   skillDiscovery: [scope, "skills", "discovery"] as const,

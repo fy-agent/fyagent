@@ -744,6 +744,16 @@ export function isProviderRestoreSupported(probe?: LocalProviderProbe): {
   // Native writeSupported already includes the writer's verified-version gate.
   // Extraction diagnostics must not veto importing an already validated package.
   if (!probe.writeSupported) {
+    if (
+      probe.providerId === "codex" &&
+      probe.reasonCode === "targetStoreUnidentified"
+    ) {
+      return {
+        supported: false,
+        reason:
+          "尚未确认 Codex 的本地存储。请在当前账号下启动 Codex，完成首次初始化后重新打开导入。",
+      };
+    }
     return {
       supported: false,
       reason:

@@ -40,7 +40,7 @@ export interface ImportPackageDialogProps {
   onRestore: (request: RestoreRequest) => Promise<RestoreAttempt[]>;
   onPickPackageFile: () => Promise<string | null>;
   onPickDirectory: () => Promise<string | null>;
-  localProbes: Record<string, LocalProviderProbe>;
+  localProbes: Record<string, LocalProviderProbe> | null;
   initialTargetWorkspace?: string;
   originRef: DialogOriginRef | undefined;
   onImportSuccess?: (attempts: RestoreAttempt[]) => void;
@@ -223,8 +223,9 @@ export function ImportPackageDialog({
   };
 
   // Check target provider capability via local probe
-  const targetProbe = localProbes[selectedTargetProviderId];
-  const probeSupport = isProviderRestoreSupported(targetProbe);
+  const probeSupport = localProbes
+    ? isProviderRestoreSupported(localProbes[selectedTargetProviderId])
+    : { supported: false, reason: "正在重新核验本地客户端的恢复能力…" };
 
   // Available source providers in this package
   const availableSourceProviders = readResult
@@ -500,7 +501,7 @@ export function ImportPackageDialog({
             </Button>
             {canRetry && (
               <Button
-                disabled={isRestoring || reviewing}
+                disabled={isRestoring || reviewing || !probeSupport.supported}
                 onClick={() => {
                   if (frozenRequestRef.current)
                     void handleExecuteRestore(frozenRequestRef.current);
@@ -684,17 +685,26 @@ export function ImportPackageDialog({
 
             {/* 本地探针验证门控横幅 */}
             {!probeSupport.supported ? (
-              <div className="fy-duplicate-conflict-box" role="alert">
+              <div
+                className="fy-duplicate-conflict-box"
+                role={localProbes === null ? "status" : "alert"}
+              >
                 <div className="fy-conflict-header">
                   <WarningIcon size={18} weight="bold" />
-                  <strong>目标软件不可用或未经验证</strong>
+                  <strong>
+                    {localProbes === null
+                      ? "正在核验目标软件"
+                      : "目标软件不可用或未经验证"}
+                  </strong>
                 </div>
                 <p className="fy-conflict-desc">
                   {probeSupport.reason ||
                     "当前客户端未安装或版本不受支持，禁止执行写入恢复。"}
                 </p>
                 <p className="fy-conflict-desc">
-                  目标能力拒绝：未调用目标恢复，未写入目标会话。请核验已安装版本的恢复支持。
+                  {localProbes === null
+                    ? "等待本次探测结果，尚未调用目标恢复。"
+                    : "目标能力拒绝：未调用目标恢复，未写入目标会话。"}
                 </p>
               </div>
             ) : (
@@ -872,6 +882,9 @@ export function ImportPackageDialog({
                 <p>{classification.summaryDescription}</p>
               </div>
             </div>
+            {canRetry && !probeSupport.supported && (
+              <p role="status">{probeSupport.reason}</p>
+            )}
 
             <div className="fy-result-attempts-list">
               {restoreResult.map((attempt) => {

@@ -5,7 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -15,8 +15,10 @@ import {
   migratableSessionSchema,
   restoreAttemptSchema,
   sessionPackageSchema,
+  type LocalProviderProbe,
   type MigratableSession,
   type RestoreAttempt,
+  type RestoreRequest,
   type SessionMeta,
 } from "@/shared/features/session-migration";
 import { createBrowserFeaturePorts } from "@/shared/platform/browser/features";
@@ -137,17 +139,22 @@ function configureSupportedImport(
   ports.sessions.restoreSessionPackage = vi.fn(async () => attempts);
 }
 
-async function executePageImport(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: /导入会话包/u }));
+async function readPageImport(user: UserEvent) {
   const dialog = await screen.findByRole("dialog");
   await user.click(within(dialog).getByRole("button", { name: "选择文件" }));
   await user.click(within(dialog).getByRole("button", { name: "解析会话包" }));
   await within(dialog).findByText("会话包解析成功", { exact: true });
-  await user.click(
-    within(dialog).getByRole("button", {
-      name: "确认恢复至目标软件",
-    }),
-  );
+  return dialog;
+}
+
+async function executePageImport(user: UserEvent) {
+  await user.click(screen.getByRole("button", { name: /导入会话包/u }));
+  const dialog = await readPageImport(user);
+  const restore = within(dialog).getByRole("button", {
+    name: "确认恢复至目标软件",
+  });
+  await waitFor(() => expect(restore).toBeEnabled());
+  await user.click(restore);
   return dialog;
 }
 
@@ -243,6 +250,118 @@ describe("session migration page batch export behavior", () => {
       screen.queryByRole("button", { name: "确认导出迁移包" }),
     ).not.toBeInTheDocument();
     expect(ports.sessions.exportSessionPackage).not.toHaveBeenCalled();
+  });
+
+  it("refreshes Codex readiness on toolbar and shortcut openings without using cached permission", async () => {
+    const user = userEvent.setup();
+    const ports = pagePorts({
+      preview: async () => migrationPreview("codex", "session-a", 1),
+    });
+    configureSupportedImport(ports, []);
+    const codex = (ready: boolean): LocalProviderProbe => ({
+      providerId: "codex",
+      installed: true,
+      detectedVersion: "0.154.0",
+      extractionSupported: true,
+      writeSupported: ready,
+      reasonCode: ready ? undefined : "targetStoreUnidentified",
+    });
+    let finishToolbar!: (probe: LocalProviderProbe) => void;
+    let finishShortcut!: (probe: LocalProviderProbe) => void;
+    const toolbar = new Promise<LocalProviderProbe>((resolve) => {
+      finishToolbar = resolve;
+    });
+    const shortcut = new Promise<LocalProviderProbe>((resolve) => {
+      finishShortcut = resolve;
+    });
+    const otherProbe = ports.sessions.probeLocalProvider;
+    const nextCodexProbe = vi
+      .fn<() => Promise<LocalProviderProbe>>()
+      .mockResolvedValueOnce(codex(true))
+      .mockReturnValueOnce(toolbar)
+      .mockReturnValueOnce(shortcut)
+      .mockResolvedValue(codex(true));
+    ports.sessions.probeLocalProvider = vi.fn((provider) =>
+      provider === "codex" ? nextCodexProbe() : otherProbe(provider),
+    );
+    renderPage(ports);
+    await screen.findByText("来源 A", { exact: true });
+    await waitFor(() => expect(nextCodexProbe).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: /导入会话包/u }));
+    const first = within(await readPageImport(user));
+    const restore = { name: "确认恢复至目标软件" };
+    expect(first.getByRole("button", restore)).toBeDisabled();
+    expect(first.getByText(/正在重新核验/u)).toBeVisible();
+    finishToolbar(codex(false));
+    expect(
+      await first.findByText(/启动 Codex，完成首次初始化/u),
+    ).toBeVisible();
+    expect(first.getByRole("button", restore)).toBeDisabled();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.keyboard("{Control>}i{/Control}");
+    const reopened = within(await readPageImport(user));
+    expect(reopened.getByRole("button", restore)).toBeDisabled();
+    expect(nextCodexProbe).toHaveBeenCalledTimes(3);
+    finishShortcut(codex(true));
+    await waitFor(() => expect(reopened.getByRole("button", restore)).toBeEnabled());
+    expect(ports.sessions.restoreSessionPackage).not.toHaveBeenCalled();
+  });
+
+  it("retains a rejected restore across page dialog reopen and retries only its reconciled binding", async () => {
+    const user = userEvent.setup();
+    const ports = pagePorts({
+      preview: async () => migrationPreview("codex", "session-a", 1),
+    });
+    configureSupportedImport(ports, []);
+    const restore = vi
+      .fn<(request: RestoreRequest) => Promise<RestoreAttempt[]>>()
+      .mockRejectedValueOnce({ code: "targetStoreUnidentified" })
+      .mockResolvedValueOnce([]);
+    ports.sessions.restoreSessionPackage = restore;
+    ports.sessions.reconcileRestoreAttempts = vi.fn(async () => []);
+    renderPage(ports);
+    await screen.findByText("来源 A", { exact: true });
+
+    const dialog = await executePageImport(user);
+    expect(
+      await within(dialog).findByText(/目标存储身份尚未确认/u),
+    ).toBeVisible();
+    expect(within(dialog).queryByText(/完成首次初始化/u)).not.toBeInTheDocument();
+    const [request] = restore.mock.calls[0];
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(screen.getByRole("button", { name: /导入会话包/u }));
+    const reopened = within(await screen.findByRole("dialog"));
+    const confirm = reopened.getByRole("button", { name: "确认恢复至目标软件" });
+    expect(confirm).toBeDisabled();
+    expect(reopened.getByLabelText("绑定目标机器工作区目录：")).toBeDisabled();
+    expect(restore).toHaveBeenCalledTimes(1);
+
+    const review = reopened.getByRole("button", { name: "核对恢复回执" });
+    await user.click(review);
+    await waitFor(() => expect(review).toBeEnabled());
+    expect(
+      reopened.queryByRole("button", { name: "重试同一恢复" }),
+    ).not.toBeInTheDocument();
+    expect(confirm).toBeDisabled();
+    vi.mocked(ports.sessions.listRestoreAttempts).mockResolvedValue([
+      restoreAttemptSchema.parse(
+        restoreAttemptSample({
+          requestId: request.requestId,
+          targetWorkspace: request.targetWorkspace,
+          stage: "failed",
+        }),
+      ),
+    ]);
+    await user.click(review);
+    const retry = await reopened.findByRole("button", { name: "重试同一恢复" });
+    await waitFor(() => expect(retry).toBeEnabled());
+    await user.click(retry);
+    expect(restore).toHaveBeenCalledTimes(2);
+    expect(restore).toHaveBeenLastCalledWith(request);
   });
 
   it("does not emit a success toast for an ambiguous restore result", async () => {

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -78,9 +78,7 @@ describe("WorkspaceTransferDialog", () => {
 
     renderDialog(ports);
 
-    await user.click(
-      screen.getByRole("button", { name: /硬件精简投影/ }),
-    );
+    await user.click(screen.getByRole("button", { name: /硬件精简投影/ }));
     await user.click(screen.getByRole("button", { name: "估算体积预算" }));
 
     expect(await screen.findByText(/100\.00 MiB 硬上限/)).toBeVisible();
@@ -148,7 +146,9 @@ describe("WorkspaceTransferDialog", () => {
           warnings: [],
         },
         secretsLocked: !unlocked,
-        decryptedApiKeyTargets: unlocked ? (["codex", "claude"] as const).slice() : [],
+        decryptedApiKeyTargets: unlocked
+          ? (["codex", "claude"] as const).slice()
+          : [],
         modelTargets: (["codex", "claude"] as const).slice(),
         strictSessionCount: 7,
         portableSessionCount: 5,
@@ -270,15 +270,11 @@ describe("WorkspaceTransferDialog", () => {
     await user.click(screen.getByRole("button", { name: "测试 SSH 连通性" }));
     expect(await screen.findByText(/已连通 · \/Users\/alice/)).toBeVisible();
 
-    await user.click(
-      screen.getByRole("button", { name: "预览远端推送清单" }),
-    );
+    await user.click(screen.getByRole("button", { name: "预览远端推送清单" }));
     expect(await screen.findByText("~/.codex/auth.json")).toBeVisible();
     expect(screen.getByText("chmod 600")).toBeVisible();
 
-    await user.click(
-      screen.getByRole("button", { name: "确认推送配置文件" }),
-    );
+    await user.click(screen.getByRole("button", { name: "确认推送配置文件" }));
     await waitFor(() =>
       expect(ports.workspaceTransfer.applySshPush).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -316,5 +312,124 @@ describe("WorkspaceTransferDialog", () => {
       await screen.findByText("SSH 端口必须为 1–65535 之间的正整数。"),
     ).toBeVisible();
     expect(ports.workspaceTransfer.testSshTarget).not.toHaveBeenCalled();
+  });
+
+  it("saves SSH host profiles with custom path mapping and previews/applies WSL sync", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+
+    ports.workspaceTransfer.listSshHosts = vi.fn(async () => []);
+    ports.workspaceTransfer.listSshPushProfiles = vi.fn(async () => []);
+    ports.workspaceTransfer.saveSshPushProfile = vi.fn(async (req) => ({
+      id: "ssh-profile-test1",
+      name: req.name,
+      host: req.host,
+      user: req.user ?? undefined,
+      port: req.port ?? undefined,
+      identityFile: req.identityFile ?? undefined,
+      pathMapping: req.pathMapping ?? {},
+      updatedAt: 1764000000,
+    }));
+    ports.workspaceTransfer.listWslDistros = vi.fn(async () => ({
+      supported: true,
+      available: true,
+      distros: [
+        {
+          name: "DevEnv-24",
+          state: "Running",
+          version: 2,
+          isDefault: true,
+        },
+      ],
+    }));
+    ports.workspaceTransfer.previewWslSync = vi.fn(async (req) => ({
+      destination: `WSL:${req.distro}`,
+      remoteHome: "/Users/dev",
+      reachable: true,
+      files: [
+        {
+          remotePath: "~/work-env/.codex/auth.json",
+          category: "model_config" as const,
+          bytes: 64,
+          mode: "600",
+          containsSecret: true,
+          action: "create" as const,
+          summary: "Codex API 凭据 · api.deepseek.com（密钥已隐藏）",
+        },
+      ],
+      totalBytes: 64,
+      warnings: [],
+    }));
+    ports.workspaceTransfer.applyWslSync = vi.fn(async () => ({
+      ok: true,
+      backupDir: "~/.fyagent-wsl-backups/20261125T180000Z",
+      outcomes: [
+        {
+          remotePath: "~/work-env/.codex/auth.json",
+          ok: true,
+          action: "created",
+          message: "已创建并生效",
+        },
+      ],
+      warnings: [],
+    }));
+
+    renderDialog(ports);
+
+    // 1. Save an SSH profile with custom path mapping
+    await user.click(screen.getByRole("tab", { name: "推送到 SSH 远端" }));
+    const sshPanel = screen.getByRole("tabpanel");
+    await user.type(
+      within(sshPanel).getByPlaceholderText("例如 dev-box 或 10.0.0.12"),
+      "gpu-node",
+    );
+    await user.click(
+      within(sshPanel).getByText(
+        /自定义目录映射（选填，留空默认使用 \$HOME 标准目录）/,
+      ),
+    );
+    await user.type(
+      within(sshPanel).getByPlaceholderText("留空默认 ~，如 ~/work-env"),
+      "~/work-env",
+    );
+    await user.click(
+      within(sshPanel).getByRole("button", { name: "存为常用主机" }),
+    );
+    await user.clear(within(sshPanel).getByPlaceholderText("例如 GPU 开发机"));
+    await user.type(
+      within(sshPanel).getByPlaceholderText("例如 GPU 开发机"),
+      "GPU 主节点",
+    );
+    await user.click(
+      within(sshPanel).getByRole("button", { name: "保存主机档案" }),
+    );
+
+    await waitFor(() =>
+      expect(ports.workspaceTransfer.saveSshPushProfile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "GPU 主节点",
+          host: "gpu-node",
+          pathMapping: { homeRoot: "~/work-env" },
+        }),
+      ),
+    );
+
+    // 2. Switch to WSL tab, preview with redacted summary, and sync
+    await user.click(screen.getByRole("tab", { name: "同步到 WSL" }));
+    expect(
+      await screen.findByRole("button", { name: /DevEnv-24/ }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "预览 WSL 同步清单" }));
+    expect(
+      await screen.findByText(/Codex API 凭据 · api\.deepseek\.com/),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "确认同步到 WSL" }));
+    await waitFor(() =>
+      expect(ports.workspaceTransfer.applyWslSync).toHaveBeenCalledWith(
+        expect.objectContaining({ distro: "DevEnv-24" }),
+      ),
+    );
+    expect(await screen.findByText(/WSL 同步已完成/)).toBeVisible();
   });
 });

@@ -61,6 +61,7 @@ type SourceContract = { id: string; file: string; snippet: string };
 type CheckerModule = {
   ACTIVE_TASK_ENV: string;
   DEVELOPMENT_HOST_ADMISSION_PATHS: readonly string[];
+  WINDOWS_SUBSYSTEM_SYNC_ADMISSION_PATHS: readonly string[];
   GENERATED_STANDALONE_PREVIEW_PATH: string;
   MACOS_POSIX_CONTRACT: readonly SourceContract[];
   VENDOR_NPM_METADATA_CONTRACT: readonly SourceContract[];
@@ -376,6 +377,53 @@ describe("durable supported-platform surface contract", () => {
     expect(
       checker.scanText("src/notes.ts", checker.SURFACE_MARKERS.runnerFamily),
     ).toEqual([]);
+
+    const subsystemAdmission = checker.WINDOWS_SUBSYSTEM_SYNC_ADMISSION_PATHS;
+    expect([...subsystemAdmission]).toEqual(
+      [...subsystemAdmission].sort((left, right) =>
+        left.localeCompare(right, "en"),
+      ),
+    );
+    expect(new Set(subsystemAdmission).size).toBe(subsystemAdmission.length);
+    const subsystem = checker.SURFACE_MARKERS.subsystem;
+    const scopedCommand = `list_${subsystem}_distros`;
+    expect(
+      checker.scanText(
+        "src-tauri/permissions/workspace-transfer.toml",
+        scopedCommand,
+      ),
+    ).toEqual([]);
+    expect(
+      checker.scanText(
+        "src-tauri/permissions/legacy-application-commands.toml",
+        scopedCommand,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "subsystem-bridge" }),
+      ]),
+    );
+    expect(
+      checker.scanText(
+        "src-tauri/src/services/remote_push/subsystem.rs",
+        `${subsystem}.exe --list --verbose`,
+      ),
+    ).toEqual([]);
+    expect(
+      checker.scanText(
+        "src-tauri/src/services/remote_push/subsystem.rs",
+        kernel,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "retired-kernel" }),
+      ]),
+    );
+    expect(checker.scanText("src/lib/platform.ts", subsystem)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "subsystem-bridge" }),
+      ]),
+    );
   });
 
   it("admits only complete closed vendor npm metadata tables in their owner", () => {

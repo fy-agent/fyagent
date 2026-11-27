@@ -97,6 +97,14 @@ built-ins only. CI Changes invokes it before dependency installation.
   changed, duplicated or moved tables fail. This is metadata identity only:
   surrounding code, host selectors, added suffixes and every other content
   rule remain checked. It does not admit another product installation target.
+- Windows-host manual configuration sync to a local Windows Subsystem target
+  is admitted only through the closed, canonical-ordered
+  `WINDOWS_SUBSYSTEM_SYNC_ADMISSION_PATHS` list for the single
+  `subsystem-bridge` content marker. It never admits retired host kernels,
+  distribution names, mount-path probes, or unreviewed paths, and the native
+  bridge (`src-tauri/src/services/remote_push/subsystem.rs`) stays strictly
+  guarded with explicit `target_os = "windows"` / `target_os = "macos"`
+  selectors and reviewed in `supported-platform-structure-assets.json`.
 
 ### Runtime and CI boundary
 

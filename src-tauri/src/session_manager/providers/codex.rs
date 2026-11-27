@@ -1954,6 +1954,7 @@ fn parse_session_lines(
             if let Some(payload) = value.get("payload") {
                 if payload.get("type").and_then(Value::as_str) == Some("message")
                     && payload.get("role").and_then(Value::as_str) == Some("user")
+                    && is_user_title_candidate(payload)
                 {
                     let text = payload.get("content").map(extract_text).unwrap_or_default();
                     if let Some(title) = title_candidate_from_user_message(&text) {
@@ -2033,6 +2034,20 @@ fn is_subagent_source(source: Option<&Value>) -> bool {
         .and_then(|value| value.as_object())
         .map(|source| source.contains_key("subagent"))
         .unwrap_or(false)
+}
+
+// Display-only fallback: old rollouts can lack provenance. When present, only
+// wholly user-authored text is eligible; don't guess which part was injected.
+fn is_user_title_candidate(payload: &Value) -> bool {
+    let Some(metadata) = payload.get("internal_chat_message_metadata_passthrough") else {
+        return true;
+    };
+    metadata
+        .get("content_item_kinds")
+        .and_then(Value::as_array)
+        .is_some_and(|kinds| {
+            !kinds.is_empty() && kinds.iter().all(|kind| kind.as_str() == Some("user.text"))
+        })
 }
 
 fn title_candidate_from_user_message(text: &str) -> Option<String> {
@@ -2218,6 +2233,56 @@ mod tests {
         let meta = parse_session(&path).unwrap();
         assert_eq!(meta.title.as_deref(), Some("How do I deploy?"));
         assert_eq!(meta.resume_command.as_deref(), Some("codex resume test-id"));
+    }
+
+    #[test]
+    fn parse_session_uses_real_prompt_after_structured_context() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("session.jsonl");
+        std::fs::write(
+            &path,
+            include_str!("../../../../tests/session-migration/fixtures/codex-golden.jsonl"),
+        )
+        .unwrap();
+        let expected = Some("合成档案：纸鹤的编号是 KITE-728。\n保持大小写。");
+        assert_eq!(parse_session(&path).unwrap().title.as_deref(), expected);
+        let scanned = scan_session_file(&path).unwrap().unwrap();
+        assert_eq!(scanned.title.as_deref(), expected);
+    }
+
+    #[test]
+    fn display_title_skips_mixed_unknown_and_malformed_provenance() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("session.jsonl");
+        for kinds in [
+            serde_json::json!(["user.text", "attachment"]),
+            serde_json::json!(["unknown.kind"]),
+            serde_json::json!(["user.text", null]),
+            serde_json::json!([]),
+            serde_json::json!("user.text"),
+            Value::Null,
+        ] {
+            let records = [
+                serde_json::json!({"type": "session_meta", "payload": {"id": "test-id"}}),
+                serde_json::json!({"type": "response_item", "payload": {
+                    "type": "message", "role": "user", "content": "Not a title",
+                    "internal_chat_message_metadata_passthrough": {"content_item_kinds": kinds}
+                }}),
+                serde_json::json!({"type": "response_item", "payload": {
+                    "type": "message", "role": "user", "content": "Legacy prompt"
+                }}),
+            ];
+            std::fs::write(
+                &path,
+                format!("{}\n{}\n{}\n", records[0], records[1], records[2]),
+            )
+            .unwrap();
+            assert_eq!(
+                parse_session(&path).unwrap().title.as_deref(),
+                Some("Legacy prompt"),
+                "unexpected title with provenance {kinds}"
+            );
+        }
     }
 
     #[test]

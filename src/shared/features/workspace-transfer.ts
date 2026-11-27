@@ -156,9 +156,59 @@ export interface RemotePushSelection {
   modelTargets?: BatchSetupTargetId[];
 }
 
+export interface RemotePathMapping {
+  homeRoot?: string | null;
+  claudeDir?: string | null;
+  codexDir?: string | null;
+  opencodeDir?: string | null;
+  ompDir?: string | null;
+}
+
+export interface SshPushProfile {
+  id: string;
+  name: string;
+  host: string;
+  user?: string;
+  port?: number;
+  identityFile?: string;
+  pathMapping: RemotePathMapping;
+  updatedAt: number;
+}
+
+export interface SaveSshPushProfileRequest {
+  id?: string;
+  name: string;
+  host: string;
+  user?: string | null;
+  port?: number | null;
+  identityFile?: string | null;
+  pathMapping?: RemotePathMapping | null;
+}
+
+export interface WslDistroEntry {
+  name: string;
+  state: string;
+  version: number;
+  isDefault: boolean;
+}
+
+export interface WslEnvironmentStatus {
+  supported: boolean;
+  available: boolean;
+  distros: WslDistroEntry[];
+  message?: string;
+}
+
+export interface WslSyncRequest {
+  distro: string;
+  selection: RemotePushSelection;
+  pathMapping?: RemotePathMapping | null;
+}
+
 export interface RemotePushRequest {
   target: SshTargetSpec;
   selection: RemotePushSelection;
+  pathMapping?: RemotePathMapping | null;
 }
 
 export interface RemotePushFilePreview {
@@ -168,6 +218,7 @@ export interface RemotePushFilePreview {
   mode: string;
   containsSecret: boolean;
   action: RemotePushFileAction;
+  summary?: string;
 }
 
 export interface RemotePushPreviewResult {
@@ -212,4 +263,12 @@ export interface WorkspaceTransferPort {
   testSshTarget(target: SshTargetSpec): Promise<SshConnectionTestResult>;
   previewSshPush(request: RemotePushRequest): Promise<RemotePushPreviewResult>;
   applySshPush(request: RemotePushRequest): Promise<RemotePushApplyResult>;
+  listSshPushProfiles(): Promise<SshPushProfile[]>;
+  saveSshPushProfile(
+    request: SaveSshPushProfileRequest,
+  ): Promise<SshPushProfile>;
+  deleteSshPushProfile(id: string): Promise<boolean>;
+  listWslDistros(): Promise<WslEnvironmentStatus>;
+  previewWslSync(request: WslSyncRequest): Promise<RemotePushPreviewResult>;
+  applyWslSync(request: WslSyncRequest): Promise<RemotePushApplyResult>;
 }

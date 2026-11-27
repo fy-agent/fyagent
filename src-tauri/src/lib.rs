@@ -2273,6 +2273,12 @@ pub fn run() {
             commands::test_ssh_target,
             commands::preview_ssh_config_push,
             commands::apply_ssh_config_push,
+            commands::list_ssh_push_profiles,
+            commands::save_ssh_push_profile,
+            commands::delete_ssh_push_profile,
+            commands::list_wsl_distros,
+            commands::preview_wsl_config_sync,
+            commands::apply_wsl_config_sync,
             commands::probe_saved_model,
             commands::get_codex_reload_status,
             // ours: endpoint speed test + custom endpoint management
@@ -2361,11 +2367,7 @@ pub fn run() {
             commands::get_proxy_status,
             commands::get_proxy_config,
             commands::update_proxy_config,
-            // Global & Per-App Config
-            commands::get_global_proxy_config,
-            commands::get_proxy_access_key,
-            commands::regenerate_proxy_access_key,
-            commands::update_global_proxy_config,
+            // Per-App Config
             commands::get_proxy_config_for_app,
             commands::update_proxy_config_for_app,
             commands::get_pricing_model_source,

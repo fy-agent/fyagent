@@ -43,6 +43,7 @@ pub struct RemotePushFilePreview {
     pub mode: String,
     pub contains_secret: bool,
     pub action: RemotePushFileAction,
+    pub summary: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -160,6 +161,46 @@ fn single_quote_posix(raw: &str) -> String {
     format!("'{}'", raw.replace('\'', "'\\''"))
 }
 
+fn shell_target_root_expr(target_root: Option<&str>) -> String {
+    match target_root {
+        None => "\"$HOME\"".to_string(),
+        Some(raw) => {
+            if let Some(sub) = raw.strip_prefix("~/") {
+                format!("\"$HOME\"/{}", single_quote_posix(sub))
+            } else {
+                single_quote_posix(raw)
+            }
+        }
+    }
+}
+
+pub(crate) fn build_probe_existing_script(rel_paths: &[&str], target_root: Option<&str>) -> String {
+    let root_expr = shell_target_root_expr(target_root);
+    let mut script =
+        format!("set -e\nTARGET_ROOT={root_expr}\nprintf 'FY_HOME:%s\\n' \"$TARGET_ROOT\"\n");
+    for rel in rel_paths {
+        let quoted = single_quote_posix(rel);
+        script.push_str(&format!(
+            "if [ -e \"$TARGET_ROOT/\"{} ]; then printf 'FY_EXISTS:%s\\n' {}; fi\n",
+            quoted, quoted
+        ));
+    }
+    script
+}
+
+pub(crate) fn parse_probe_output(stdout: &str) -> (Option<String>, HashSet<String>) {
+    let mut home = None;
+    let mut existing = HashSet::new();
+    for line in stdout.lines() {
+        if let Some(h) = line.strip_prefix("FY_HOME:") {
+            home = Some(h.trim().to_string());
+        } else if let Some(p) = line.strip_prefix("FY_EXISTS:") {
+            existing.insert(p.trim().to_string());
+        }
+    }
+    (home, existing)
+}
+
 pub fn test_ssh_connection(target: &ValidatedSshTarget) -> SshConnectionTestResult {
     let probe_script = r#"
 set -e
@@ -210,19 +251,13 @@ printf 'FY_SSH_OK:%s\n' "$HOME"
     }
 }
 
-/// Checks which candidate relative paths already exist under remote `$HOME`.
-pub fn probe_remote_existing_paths(
+/// Checks which candidate relative paths already exist under the effective target root.
+pub fn probe_remote_existing_paths_at(
     target: &ValidatedSshTarget,
     rel_paths: &[&str],
+    target_root: Option<&str>,
 ) -> Result<(Option<String>, HashSet<String>), String> {
-    let mut script = String::from("set -e\nprintf 'FY_HOME:%s\\n' \"$HOME\"\n");
-    for rel in rel_paths {
-        let quoted = single_quote_posix(rel);
-        script.push_str(&format!(
-            "if [ -e \"$HOME/\"{} ]; then printf 'FY_EXISTS:%s\\n' {}; fi\n",
-            quoted, quoted
-        ));
-    }
+    let script = build_probe_existing_script(rel_paths, target_root);
     let (code, stdout, stderr) = run_ssh_stdin(target, &script)?;
     if code != 0 {
         let hint = stderr
@@ -234,19 +269,10 @@ pub fn probe_remote_existing_paths(
         return Err(format!("无法探测远端文件状态：{hint}"));
     }
 
-    let mut home = None;
-    let mut existing = HashSet::new();
-    for line in stdout.lines() {
-        if let Some(h) = line.strip_prefix("FY_HOME:") {
-            home = Some(h.trim().to_string());
-        } else if let Some(p) = line.strip_prefix("FY_EXISTS:") {
-            existing.insert(p.trim().to_string());
-        }
-    }
-    Ok((home, existing))
+    Ok(parse_probe_output(&stdout))
 }
 
-/// Builds the zero-dependency POSIX shell script streamed over SSH stdin.
+/// Builds the zero-dependency POSIX shell script streamed over remote shell stdin.
 ///
 /// Security invariants:
 /// - `umask 077` is enabled before creating backups or temp files so secret-bearing
@@ -254,23 +280,32 @@ pub fn probe_remote_existing_paths(
 /// - Refuses to overwrite remote symlinks (`-L`) or directories (`-d`).
 /// - Wraps base64 lines at 76 columns to stay strictly within POSIX `LINE_MAX`.
 /// - Rolls back prior files in the batch from `$BACKUP_DIR` if any later file fails.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn build_atomic_push_script(backup_stamp: &str, files: &[RenderedRemoteFile]) -> String {
-    let mut script = String::from(
+    build_atomic_push_script_at(".fyagent-remote-backups", backup_stamp, None, files)
+}
+
+pub(crate) fn build_atomic_push_script_at(
+    backup_dir_name: &str,
+    backup_stamp: &str,
+    target_root: Option<&str>,
+    files: &[RenderedRemoteFile],
+) -> String {
+    let root_expr = shell_target_root_expr(target_root);
+    let mut script = format!(
         "set -eu\n\
          umask 077\n\
          if printf 'QQ==' | base64 -d >/dev/null 2>&1; then\n\
-           fy_b64() { base64 -d; }\n\
+           fy_b64() {{ base64 -d; }}\n\
          elif printf 'QQ==' | base64 -D >/dev/null 2>&1; then\n\
-           fy_b64() { base64 -D; }\n\
+           fy_b64() {{ base64 -D; }}\n\
          else\n\
            printf 'FY_ERR_NO_B64\\n'\n\
            exit 1\n\
          fi\n\
-         BACKUP_DIR=\"$HOME/.fyagent-remote-backups/",
-    );
-    script.push_str(backup_stamp);
-    script.push_str(
-        "\"\n\
+         TARGET_ROOT={root_expr}\n\
+         mkdir -p \"$TARGET_ROOT\"\n\
+         BACKUP_DIR=\"$HOME/{backup_dir_name}/{backup_stamp}\"\n\
          mkdir -p \"$BACKUP_DIR\"\n\
          chmod 700 \"$BACKUP_DIR\"\n\
          printf 'FY_BACKUP:%s\\n' \"$BACKUP_DIR\"\n\
@@ -278,18 +313,18 @@ pub(crate) fn build_atomic_push_script(backup_stamp: &str, files: &[RenderedRemo
          UPDATED_LOG=\"$BACKUP_DIR/.fy_updated.log\"\n\
          : > \"$CREATED_LOG\"\n\
          : > \"$UPDATED_LOG\"\n\
-         fy_rollback() {\n\
+         fy_rollback() {{\n\
            if [ -f \"$UPDATED_LOG\" ]; then\n\
              while IFS= read -r _r; do\n\
-               [ -n \"$_r\" ] && [ -f \"$BACKUP_DIR/$_r\" ] && cp -p \"$BACKUP_DIR/$_r\" \"$HOME/$_r\" || true\n\
+               [ -n \"$_r\" ] && [ -f \"$BACKUP_DIR/$_r\" ] && cp -p \"$BACKUP_DIR/$_r\" \"$TARGET_ROOT/$_r\" || true\n\
              done < \"$UPDATED_LOG\"\n\
            fi\n\
            if [ -f \"$CREATED_LOG\" ]; then\n\
              while IFS= read -r _r; do\n\
-               [ -n \"$_r\" ] && rm -f \"$HOME/$_r\" || true\n\
+               [ -n \"$_r\" ] && rm -f \"$TARGET_ROOT/$_r\" || true\n\
              done < \"$CREATED_LOG\"\n\
            fi\n\
-         }\n",
+         }}\n"
     );
 
     for (idx, file) in files.iter().enumerate() {
@@ -299,7 +334,7 @@ pub(crate) fn build_atomic_push_script(backup_stamp: &str, files: &[RenderedRemo
 
         script.push_str(&format!(
             "REL={rel_q}\n\
-             DEST=\"$HOME/$REL\"\n\
+             DEST=\"$TARGET_ROOT/$REL\"\n\
              DIR=\"$(dirname \"$DEST\")\"\n\
              if [ -L \"$DIR\" ] || [ -L \"$DEST\" ] || [ -d \"$DEST\" ]; then\n\
                printf 'FY_ERR:%s\\n' \"$REL\"\n\
@@ -345,22 +380,16 @@ pub(crate) fn build_atomic_push_script(backup_stamp: &str, files: &[RenderedRemo
     script
 }
 
-pub fn apply_ssh_push(
-    target: &ValidatedSshTarget,
+pub(crate) fn parse_push_apply_output(
+    code: i32,
+    stdout: &str,
+    stderr: &str,
+    fallback_backup_dir: String,
+    display_prefix: &str,
     files: &[RenderedRemoteFile],
     warnings: Vec<String>,
-) -> Result<RemotePushApplyResult, String> {
-    if files.is_empty() {
-        return Err(
-            "当前没有可推送的配置文件，请先在本地配置至少 1 项模型、MCP、提示词或 Skills"
-                .to_string(),
-        );
-    }
-    let backup_stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
-    let script = build_atomic_push_script(&backup_stamp, files);
-    let (code, stdout, stderr) = run_ssh_stdin(target, &script)?;
-
-    let mut backup_dir = format!("~/.fyagent-remote-backups/{backup_stamp}");
+) -> RemotePushApplyResult {
+    let mut backup_dir = fallback_backup_dir;
     let mut status_map = std::collections::HashMap::<String, (bool, String)>::new();
 
     for line in stdout.lines() {
@@ -386,7 +415,7 @@ pub fn apply_ssh_push(
         .iter()
         .map(|f| match status_map.get(&f.remote_rel_path) {
             Some((true, action)) => RemotePushFileOutcome {
-                remote_path: format!("~/{}", f.remote_rel_path),
+                remote_path: format!("{display_prefix}{}", f.remote_rel_path),
                 ok: true,
                 action: action.clone(),
                 message: if action == "updated" {
@@ -396,7 +425,7 @@ pub fn apply_ssh_push(
                 },
             },
             _ => RemotePushFileOutcome {
-                remote_path: format!("~/{}", f.remote_rel_path),
+                remote_path: format!("{display_prefix}{}", f.remote_rel_path),
                 ok: false,
                 action: "failed".to_string(),
                 message: err_hint.to_string(),
@@ -405,12 +434,40 @@ pub fn apply_ssh_push(
         .collect();
 
     let all_ok = code == 0 && outcomes.iter().all(|o| o.ok);
-    Ok(RemotePushApplyResult {
+    RemotePushApplyResult {
         ok: all_ok,
         backup_dir,
         outcomes,
         warnings,
-    })
+    }
+}
+
+pub fn apply_ssh_push_at(
+    target: &ValidatedSshTarget,
+    target_root: Option<&str>,
+    display_prefix: &str,
+    files: &[RenderedRemoteFile],
+    warnings: Vec<String>,
+) -> Result<RemotePushApplyResult, String> {
+    if files.is_empty() {
+        return Err(
+            "当前没有可推送的配置文件，请先在本地配置至少 1 项模型、MCP、提示词或 Skills"
+                .to_string(),
+        );
+    }
+    let backup_stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+    let script =
+        build_atomic_push_script_at(".fyagent-remote-backups", &backup_stamp, target_root, files);
+    let (code, stdout, stderr) = run_ssh_stdin(target, &script)?;
+    Ok(parse_push_apply_output(
+        code,
+        &stdout,
+        &stderr,
+        format!("~/.fyagent-remote-backups/{backup_stamp}"),
+        display_prefix,
+        files,
+        warnings,
+    ))
 }
 
 #[cfg(test)]
@@ -425,6 +482,7 @@ mod tests {
             category: RemoteFileCategory::ModelConfig,
             mode: "600",
             contains_secret: true,
+            summary: "Codex API 凭据".to_string(),
             content: Zeroizing::new(br#"{"OPENAI_API_KEY":"sk-ssh-test"}"#.to_vec()),
         }];
         let script = build_atomic_push_script("20261119T140000Z", &files);
@@ -452,6 +510,7 @@ mod tests {
                 category: RemoteFileCategory::ModelConfig,
                 mode: "600",
                 contains_secret: true,
+                summary: "Codex API 凭据".to_string(),
                 content: Zeroizing::new(br#"{"OPENAI_API_KEY":"sk-new-value"}"#.to_vec()),
             },
             RenderedRemoteFile {
@@ -459,6 +518,7 @@ mod tests {
                 category: RemoteFileCategory::GlobalPrompt,
                 mode: "644",
                 contains_secret: false,
+                summary: "Claude Code 全局提示词".to_string(),
                 content: Zeroizing::new(b"# Global Rule\nUse clean Rust.\n".to_vec()),
             },
         ];
@@ -524,6 +584,7 @@ mod tests {
                 category: RemoteFileCategory::ModelConfig,
                 mode: "600",
                 contains_secret: true,
+                summary: "Codex API 凭据".to_string(),
                 content: Zeroizing::new(br#"{"OPENAI_API_KEY":"updated-before-fail"}"#.to_vec()),
             },
             RenderedRemoteFile {
@@ -531,6 +592,7 @@ mod tests {
                 category: RemoteFileCategory::GlobalPrompt,
                 mode: "644",
                 contains_secret: false,
+                summary: "Claude Code 全局提示词".to_string(),
                 content: Zeroizing::new(b"# Hijack attempt\n".to_vec()),
             },
         ];
@@ -679,9 +741,12 @@ mod tests {
         );
 
         // 2. Live remote path existence probe
-        let (_, existing) =
-            probe_remote_existing_paths(&target, &[".codex/auth.json", ".claude/settings.json"])
-                .expect("probe remote paths");
+        let (_, existing) = probe_remote_existing_paths_at(
+            &target,
+            &[".codex/auth.json", ".claude/settings.json"],
+            None,
+        )
+        .expect("probe remote paths");
         assert!(existing.contains(".codex/auth.json"));
         assert!(!existing.contains(".claude/settings.json"));
 
@@ -692,6 +757,7 @@ mod tests {
                 category: RemoteFileCategory::ModelConfig,
                 mode: "600",
                 contains_secret: true,
+                summary: "Codex API 凭据".to_string(),
                 content: Zeroizing::new(br#"{"OPENAI_API_KEY":"sk-real-ssh-push"}"#.to_vec()),
             },
             RenderedRemoteFile {
@@ -699,6 +765,7 @@ mod tests {
                 category: RemoteFileCategory::ModelConfig,
                 mode: "600",
                 contains_secret: true,
+                summary: "Claude Code 模型配置".to_string(),
                 content: Zeroizing::new(
                     br#"{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-real-ssh-push"}}"#.to_vec(),
                 ),
@@ -708,10 +775,12 @@ mod tests {
                 category: RemoteFileCategory::GlobalPrompt,
                 mode: "644",
                 contains_secret: false,
+                summary: "Claude Code 全局提示词".to_string(),
                 content: Zeroizing::new(b"# Remote Rules\nShip clean code.\n".to_vec()),
             },
         ];
-        let applied = apply_ssh_push(&target, &files, Vec::new()).expect("apply ssh push");
+        let applied =
+            apply_ssh_push_at(&target, None, "~/", &files, Vec::new()).expect("apply ssh push");
         assert!(applied.ok, "apply failed: {:?}", applied);
         assert_eq!(applied.outcomes.len(), 3);
         assert_eq!(applied.outcomes[0].action, "updated");
@@ -738,5 +807,62 @@ mod tests {
             .output()
             .expect("stat remote secret file");
         assert_eq!(String::from_utf8_lossy(&stat_out.stdout).trim(), "600");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn atomic_push_script_supports_custom_target_root_and_backups() {
+        let temp = tempfile::tempdir().expect("temp home");
+        let existing_dir = temp.path().join("work-env").join(".claude-alt");
+        std::fs::create_dir_all(&existing_dir).unwrap();
+        std::fs::write(existing_dir.join("CLAUDE.md"), "# Old Rule\n").unwrap();
+
+        let files = vec![RenderedRemoteFile {
+            remote_rel_path: ".claude-alt/CLAUDE.md".to_string(),
+            category: RemoteFileCategory::GlobalPrompt,
+            mode: "644",
+            contains_secret: false,
+            summary: "Claude Code 全局提示词".to_string(),
+            content: Zeroizing::new(b"# Custom Root Rule\n".to_vec()),
+        }];
+
+        let script = build_atomic_push_script_at(
+            ".fyagent-remote-backups",
+            "20261125T180500Z",
+            Some("~/work-env"),
+            &files,
+        );
+        let mut child = Command::new("sh")
+            .arg("-s")
+            .env("HOME", temp.path())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn sh");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(script.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            std::fs::read_to_string(existing_dir.join("CLAUDE.md")).unwrap(),
+            "# Custom Root Rule\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(
+                temp.path()
+                    .join(".fyagent-remote-backups/20261125T180500Z/.claude-alt/CLAUDE.md")
+            )
+            .unwrap(),
+            "# Old Rule\n"
+        );
     }
 }

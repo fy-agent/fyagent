@@ -1561,6 +1561,8 @@ mod tests {
             "allow-change-plan",
             "allow-agent-install-readiness",
             "allow-session-migration",
+            "allow-model-management-loop",
+            "allow-workspace-transfer",
         ] {
             assert_eq!(
                 permissions
@@ -1613,6 +1615,8 @@ mod tests {
         for manifest in [
             include_str!("../../permissions/config-pack.toml"),
             include_str!("../../permissions/session-migration.toml"),
+            include_str!("../../permissions/model-management-loop.toml"),
+            include_str!("../../permissions/workspace-transfer.toml"),
         ] {
             let commands = allowed_commands(manifest);
             assert!(allowed.is_disjoint(&commands));
@@ -1636,6 +1640,14 @@ mod tests {
         assert!(registered.contains("bind_managed_proxy_provider"));
         assert!(registered.contains("bind_opencode_managed_proxy"));
         assert!(!registered.contains("get_agent_health"));
+        for retired in [
+            "get_global_proxy_config",
+            "update_global_proxy_config",
+            "get_proxy_access_key",
+            "regenerate_proxy_access_key",
+        ] {
+            assert!(!registered.contains(retired));
+        }
         assert!(registered.contains("get_first_use_guide_state"));
         assert!(registered.contains("dismiss_first_use_guide"));
         for command in [
@@ -1661,10 +1673,16 @@ mod tests {
             "test_ssh_target",
             "preview_ssh_config_push",
             "apply_ssh_config_push",
+            "list_ssh_push_profiles",
+            "save_ssh_push_profile",
+            "delete_ssh_push_profile",
+            "list_wsl_distros",
+            "preview_wsl_config_sync",
+            "apply_wsl_config_sync",
         ] {
             assert!(registered.contains(command));
         }
-        assert_eq!(registered.len(), 428, "review intentional handler changes");
+        assert_eq!(registered.len(), 430, "review intentional handler changes");
         assert_eq!(
             allowed, registered,
             "every registered application command must be granted exactly once while an app ACL manifest exists"

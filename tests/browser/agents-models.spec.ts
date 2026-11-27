@@ -279,9 +279,7 @@ test("Codex configuration loads safely without unsolicited mutation", async ({
   await expect(
     page.getByRole("heading", { name: "实际配置文件" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "已保存方案" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "已保存方案" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "当前模型" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "管理模型" })).toBeVisible();
   await expect(page.getByRole("button", { name: "返回" })).toBeVisible();
@@ -989,7 +987,9 @@ test("Models health overview probes configured clients and saves a reusable cust
   await expect(batchDialog).toHaveAttribute("data-motion-settled", "true");
   await expect(batchDialog.getByLabel("模板名称")).toHaveValue("DeepSeek");
   await batchDialog.getByLabel("模板名称").fill("团队内部中转站");
-  await expect(batchDialog.getByLabel("模板名称")).toHaveValue("团队内部中转站");
+  await expect(batchDialog.getByLabel("模板名称")).toHaveValue(
+    "团队内部中转站",
+  );
   await batchDialog.getByRole("button", { name: "保存模板" }).click();
 
   await expect(
@@ -1017,10 +1017,25 @@ test("TopBar migration and SSH push dialog previews <=100 MiB projection pack an
   await expect(dialog.getByText(/100\.00 MiB 硬上限/)).toBeVisible();
 
   await dialog.getByRole("tab", { name: "推送到 SSH 远端" }).click();
-  await dialog.getByRole("button", { name: /dev-box \(10\.0\.0\.12\)/ }).click();
+  await expect(
+    dialog.getByRole("button", { name: /GPU 开发机 \(10\.0\.0\.88\)/ }),
+  ).toBeVisible();
+  await dialog
+    .getByRole("button", { name: /dev-box \(10\.0\.0\.12\)/ })
+    .click();
   await dialog.getByRole("button", { name: "预览远端推送清单" }).click();
   await expect(dialog.getByText("~/.codex/auth.json")).toBeVisible();
   await expect(dialog.getByText("chmod 600")).toBeVisible();
+  await expect(
+    dialog.getByText("Codex API 凭据 · api.deepseek.com（密钥已隐藏）"),
+  ).toBeVisible();
+
+  await dialog.getByRole("tab", { name: "同步到 WSL" }).click();
+  await expect(dialog.getByRole("button", { name: /DevEnv-24/ })).toBeVisible();
+  await dialog.getByRole("button", { name: "预览 WSL 同步清单" }).click();
+  const wslPreview = dialog.getByRole("region", { name: "WSL 待同步文件预览" });
+  await expect(wslPreview.getByText("WSL:DevEnv-24")).toBeVisible();
+  await expect(wslPreview.getByText("~/.codex/auth.json")).toBeVisible();
 
   await dialog.getByRole("button", { name: "关闭" }).click();
   await expectNoHorizontalOverflow(page);
