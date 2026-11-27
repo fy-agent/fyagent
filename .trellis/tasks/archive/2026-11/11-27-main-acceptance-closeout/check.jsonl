@@ -1,0 +1,4 @@
+{"file":"docs/fyagent/development/validation.md","reason":"Distinguish local, test-hooks GUI, native readback, and live online/model evidence"}
+{"file":".trellis/spec/backend/session-migration.md","reason":"Verify honest capability gates, NativeReadbackVerified, and real-model continuation claims"}
+{"file":".trellis/spec/backend/supported-platform-governance.md","reason":"Ensure task artifacts satisfy repository platform content scanner before and after archive"}
+{"file":".trellis/spec/backend/trellis-prearchive-gate.md","reason":"Verify direct-session prearchive and post-archive contract gates"}
