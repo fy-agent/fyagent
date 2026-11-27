@@ -463,7 +463,7 @@
     ],
     [
       "src-tauri/src/session_manager/migrate/native/gemini.rs",
-      "d003bda63e22f51bf101962371d09ccbb3f994e38c23132b4006f4db53cceb34"
+      "8e0fffddbf45c55e5d9c10b5f9b5f41083a73822ab82dd99f3a0efa2364bdad9"
     ],
     [
       "src-tauri/src/session_manager/migrate/native/hermes.rs",
@@ -471,7 +471,7 @@
     ],
     [
       "src-tauri/src/session_manager/migrate/native/mod.rs",
-      "5bd39587382b2a1bcb875a786ae7f6288bd871dd427ad6bfe15342a0d6ea4001"
+      "41518643de49e049880f6b372583609c8eeabfbf5eeaca88ccf5f2dc5f10f4fd"
     ],
     [
       "src-tauri/src/session_manager/migrate/native/opencode.rs",

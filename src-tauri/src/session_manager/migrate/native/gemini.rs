@@ -32,7 +32,23 @@ const {pathToFileURL}=await import('node:url');
 const [entryArg,inputArg]=process.argv.slice(1);
 const input=JSON.parse(await fs.readFile(inputArg,'utf8'));
 const result=(status,fields={})=>console.log(JSON.stringify({protocol:1,status,...fields}));
-const entry=await fs.realpath(entryArg);
+async function resolveEntry(rawArg) {
+ const resolved=await fs.realpath(rawArg);
+ if(process.platform==='darwin')return resolved;
+ if(process.platform==='win32'){
+  if(!/\.(?:cmd|bat)$/i.test(resolved))return resolved;
+  const stat=await fs.stat(resolved);
+  if(!stat.isFile()||stat.size>65536)throw new Error('unsupported native launcher');
+  const shim=await fs.readFile(resolved,'utf8');
+  const rawRef=shim.match(/"([^"\r\n]*?@google[\\/]gemini-cli[\\/]bundle[\\/]gemini\.js)"/i)?.[1];
+  if(!rawRef)throw new Error('unsupported native launcher');
+  const baseDir=path.dirname(resolved);
+  const expanded=rawRef.replace(/^%(?:~dp0|dp0%)[\\/]?/i,baseDir+path.sep);
+  return fs.realpath(path.resolve(baseDir,expanded));
+ }
+ throw new Error('unsupported native platform');
+}
+const entry=await resolveEntry(entryArg);
 const bundle=path.dirname(entry);
 const pkg=JSON.parse(await fs.readFile(path.join(bundle,'..','package.json'),'utf8'));
 if(pkg.name!=='@google/gemini-cli'||pkg.version!=='0.46.0') {
@@ -279,7 +295,11 @@ impl Runtime {
             provider_cli_path(PROVIDER_ID).ok_or_else(|| MigrationError::ProviderNotInstalled {
                 provider_id: PROVIDER_ID.into(),
             })?;
-        let node = resolve_cli(PROVIDER_ID, "node", &[]).ok_or_else(|| {
+        let adjacent_node = cli
+            .parent()
+            .map(|dir| super::runtime_binary_candidates(dir, "node"))
+            .unwrap_or_default();
+        let node = resolve_cli(PROVIDER_ID, "node", &adjacent_node).ok_or_else(|| {
             protocol(
                 "native runtime",
                 "The installed Gemini Node runtime is unavailable.",
@@ -308,6 +328,11 @@ impl Runtime {
             )
         })?;
         let mut command = Command::new(&self.node);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000);
+        }
         command
             .args(["--input-type=module", "--eval", NATIVE_BRIDGE])
             .arg(&self.cli)
@@ -606,5 +631,179 @@ print(json.dumps(response))
         let still_published: Value =
             serde_json::from_slice(&std::fs::read(&publication).unwrap()).unwrap();
         assert_eq!(published, still_published);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    #[serial_test::serial]
+    fn windows_cmd_shim_and_node_exe_resolve_and_guard_the_fixed_bridge() {
+        use std::cell::Cell;
+        use std::ffi::OsString;
+        struct EnvGuard(Vec<(&'static str, Option<OsString>)>);
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                for (key, previous) in &self.0 {
+                    match previous {
+                        Some(value) => std::env::set_var(key, value),
+                        None => std::env::remove_var(key),
+                    }
+                }
+            }
+        }
+
+        let Some(real_node) = super::resolve_cli(PROVIDER_ID, "node", &[]) else {
+            panic!("Windows test host must provide node.exe on PATH");
+        };
+        assert!(
+            real_node
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("exe")),
+            "expected node.exe on Windows, got {}",
+            real_node.display()
+        );
+
+        let root = tempfile::tempdir().unwrap();
+        let npm_bin = root.path().join("AppData").join("Roaming").join("npm");
+        let pkg_root = npm_bin
+            .join("node_modules")
+            .join("@google")
+            .join("gemini-cli");
+        let bundle_dir = pkg_root.join("bundle");
+        std::fs::create_dir_all(&bundle_dir).unwrap();
+        std::fs::create_dir_all(root.path().join(".gemini").join("tmp")).unwrap();
+
+        // Build a minimal synthetic @google/gemini-cli@0.46.0 bundle layout matching NATIVE_BRIDGE's exact imports.
+        std::fs::write(
+            pkg_root.join("package.json"),
+            r#"{"name":"@google/gemini-cli","version":"0.46.0","type":"module"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            bundle_dir.join("gemini.js"),
+            "await import(\"./gemini-TEST01.js\");\n",
+        )
+        .unwrap();
+        std::fs::write(
+            bundle_dir.join("gemini-TEST01.js"),
+            "import { Storage, loadConversationRecord, convertSessionToClientHistory, getProjectHash } from \"./chunk-CORE01.js\";\nexport { Storage, loadConversationRecord, convertSessionToClientHistory, getProjectHash };\n",
+        )
+        .unwrap();
+        std::fs::write(
+            bundle_dir.join("chunk-CORE01.js"),
+            r#"import fs from 'node:fs/promises';
+import path from 'node:path';
+import crypto from 'node:crypto';
+export function getProjectHash(root) {
+  return crypto.createHash('sha256').update(String(root)).digest('hex').slice(0, 16);
+}
+export class Storage {
+  constructor(workspace) { this.workspace = workspace; }
+  async initialize() {}
+  getProjectRoot() { return this.workspace; }
+  getProjectTempDir() {
+    return path.join(process.env.GEMINI_CLI_HOME, '.gemini', 'tmp', getProjectHash(this.workspace));
+  }
+}
+export async function loadConversationRecord(filePath) {
+  const lines = (await fs.readFile(filePath, 'utf8')).trim().split(/\r?\n/).map((l) => JSON.parse(l));
+  const [meta, ...messages] = lines;
+  return { ...meta, messages };
+}
+export function convertSessionToClientHistory(messages) {
+  return messages
+    .filter((m) => m.type === 'user' || m.type === 'gemini')
+    .map((m) => ({
+      content: {
+        role: m.type === 'user' ? 'user' : 'model',
+        parts: Array.isArray(m.content) ? m.content : [{ text: String(m.content) }],
+      },
+    }));
+}
+"#,
+        )
+        .unwrap();
+
+        let cmd_shim = npm_bin.join("gemini.cmd");
+        std::fs::write(
+            &cmd_shim,
+            "@ECHO off\r\nSET \"dp0=%~dp0\"\r\n\"%dp0%\\node_modules\\@google\\gemini-cli\\bundle\\gemini.js\" %*\r\n",
+        )
+        .unwrap();
+
+        let node_dir = real_node.parent().unwrap().to_path_buf();
+        let test_path = std::env::join_paths([&npm_bin, &node_dir]).unwrap();
+        let _environment = EnvGuard(
+            ["FYAGENT_TEST_HOME", "PATH"]
+                .into_iter()
+                .map(|key| (key, std::env::var_os(key)))
+                .collect(),
+        );
+        std::env::set_var("FYAGENT_TEST_HOME", root.path());
+        std::env::set_var("PATH", &test_path);
+
+        struct Context {
+            recorded: Cell<Option<String>>,
+        }
+        impl NativeWriteContext for Context {
+            fn record_native_id(&self, id: &str) -> MigrationResult<()> {
+                self.recorded.set(Some(id.to_owned()));
+                Ok(())
+            }
+        }
+
+        let id = "11223344-5566-4777-8899-aabbccddeeff";
+        let workspace = root.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let session = expectation(vec![
+            MigratableMessage {
+                seq: 0,
+                kind: MessageKind::UserText,
+                text: "Windows 恢复测试\r\n第二行".into(),
+                ts: None,
+            },
+            MigratableMessage {
+                seq: 1,
+                kind: MessageKind::AssistantFinal,
+                text: "原生 JSONL 回读通过".into(),
+                ts: None,
+            },
+        ]);
+        let input = NativeRestoreInput {
+            session: session.clone(),
+            target_workspace: workspace,
+            target_store_id: GeminiWriter.resolve_target_store_id().unwrap(),
+            target_native_nonce: String::new(),
+            target_native_id: Some(id.into()),
+        };
+        let context = Context {
+            recorded: Cell::new(None),
+        };
+
+        // 1. Forged launcher that points outside @google/gemini-cli must fail closed before recording native ID.
+        std::fs::write(&cmd_shim, "@ECHO off\r\n\"%~dp0\\evil.js\" %*\r\n").unwrap();
+        assert!(matches!(
+            GeminiWriter.restore(&input, &context),
+            NativeWriteOutcome::ProvenNoSideEffect { .. }
+        ));
+        assert!(context.recorded.take().is_none());
+
+        // 2. Valid Windows npm .cmd shim restores and passes native readback.
+        std::fs::write(
+            &cmd_shim,
+            "@ECHO off\r\nSET \"dp0=%~dp0\"\r\n\"%dp0%\\node_modules\\@google\\gemini-cli\\bundle\\gemini.js\" %*\r\n",
+        )
+        .unwrap();
+        let outcome = GeminiWriter.restore(&input, &context);
+        assert!(
+            matches!(outcome, NativeWriteOutcome::Written { target_native_id: Some(ref got), .. } if got == id),
+            "unexpected restore outcome: {outcome:?}"
+        );
+        assert_eq!(context.recorded.take().as_deref(), Some(id));
+
+        let readback = GeminiWriter.verify_readback(id, &session).unwrap();
+        assert!(
+            matches!(readback, ReadbackVerdict::Visible { ref observed_digest } if observed_digest == &session.content_digest),
+            "unexpected readback verdict: {readback:?}"
+        );
     }
 }

@@ -118,6 +118,20 @@ bodies or authentication material. Native history stays in the provider store.
   achieved them.
 - Keep formal Windows ordinary-user execution boundaries. An unavailable
   authenticated helper must fail before executing a user CLI elevated.
+- On Windows, native writer runtime lookup (`resolve_cli`) must check `.exe`
+  before extensionless names (`runtime_binary_candidates`) and include the user
+  `Roaming\npm` directory in `installer_locations`. Gemini's `NATIVE_BRIDGE`
+  resolves bounded (`<= 64 KiB`) `.cmd`/`.bat` npm launchers on `win32` only
+  when they reference `@google/gemini-cli/bundle/gemini.js`, expanding leading
+  `%dp0%`/`%~dp0` before `fs.realpath` and strict `=0.46.0` package validation;
+  forged launchers fail closed before recording a native ID.
+- Under `feature = "test-hooks"`, `identity::local_state_dir` and
+  `machine_fingerprint` require an active `identity::with_local_state_dir`
+  thread-local guard so tests never touch host installation identity. A
+  standalone `--features test-hooks` desktop process can exercise
+  `FYAGENT_TEST_HOME` configuration and `probe_local_provider` gates, while
+  receipt-claiming `restore_package` fails closed before `claim_batch` unless
+  run in the standard build or inside `with_local_state_dir`.
 - Source inspection, portable tests, native API readback, UI inspection,
   real model continuation and Windows/macOS execution are distinct evidence.
 
