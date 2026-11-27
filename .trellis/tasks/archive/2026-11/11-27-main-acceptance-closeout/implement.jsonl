@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Windows frozen Explorer home vs test-hooks FYAGENT_TEST_HOME isolation boundary"}
+{"file":".trellis/spec/backend/reversible-user-config.md","reason":"Rolling backup and field-preservation invariants for GUI clone and key rotation"}
+{"file":".trellis/spec/backend/mcp-management.md","reason":"MCP HTTP specification and configuration projection contract for Keenable"}
+{"file":".trellis/spec/backend/session-migration.md","reason":"Gemini 0.46.0 and Codex 0.154.0 native restore, readback, and continuation evidence boundaries"}
+{"file":".trellis/spec/backend/trellis-prearchive-gate.md","reason":"Direct-session active-task validation and prearchive contract rules"}

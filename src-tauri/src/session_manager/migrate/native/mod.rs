@@ -394,13 +394,30 @@ pub(crate) fn resolve_cli(provider_id: &str, binary: &str, extra: &[PathBuf]) ->
     }
     let path_var = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path_var) {
-        let candidate = dir.join(binary);
-        if candidate.is_absolute() && candidate.is_file() {
-            return Some(candidate);
+        for candidate in runtime_binary_candidates(&dir, binary) {
+            if candidate.is_absolute() && candidate.is_file() {
+                return Some(candidate);
+            }
         }
     }
     log::debug!("{provider_id}: no `{binary}` on PATH");
     None
+}
+
+/// Native binary filenames for an interpreter runtime (excludes shell wrappers).
+pub(crate) fn runtime_binary_candidates(dir: &std::path::Path, binary: &str) -> Vec<PathBuf> {
+    let _ = (dir, binary);
+    let mut candidates = Vec::new();
+    #[cfg(target_os = "windows")]
+    {
+        candidates.push(dir.join(format!("{binary}.exe")));
+        candidates.push(dir.join(binary));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        candidates.push(dir.join(binary));
+    }
+    candidates
 }
 
 /// Where a provider's own installer puts its launcher, beyond `PATH`.
@@ -414,6 +431,8 @@ fn installer_locations(provider_id: &str, binary: &str) -> Vec<PathBuf> {
         return Vec::new();
     }
     let mut directories = vec![home.join(".local/bin"), home.join(".npm-global/bin")];
+    #[cfg(target_os = "windows")]
+    directories.push(crate::config::get_user_roaming_app_data_dir().join("npm"));
     match provider_id {
         "codex" => directories.push(home.join(".codex/bin")),
         "opencode" => directories.push(home.join(".opencode/bin")),
